@@ -8,6 +8,7 @@
 #include "meshcore/acceleration/AABBVolumeHierarchy.h"
 #include <queue>
 #include <glm/gtx/component_wise.hpp>
+#include <functional>
 
 float computeSignedDistanceToMeshAndPolesFlatBVH(const std::shared_ptr<BoundingVolumeHierarchy>& tree, const glm::vec3& point, const std::vector<Sphere>& poles, double minimumDistanceRequired){
 
@@ -171,9 +172,18 @@ Sphere InaccessibilityPoles::findNextPoleOfInaccessibility(const std::shared_ptr
     return {bestPoint, bestDistance};
 }
 
+// Custom hash for pair<size_t, shared_ptr<ModelSpaceMesh>>
+struct MeshCacheKeyHash {
+    std::size_t operator()(const std::pair<size_t, std::shared_ptr<ModelSpaceMesh>>& k) const {
+        std::size_t h1 = std::hash<size_t>{}(k.first);
+        std::size_t h2 = std::hash<ModelSpaceMesh*>{}(k.second.get());
+        return h1 ^ (h2 << 1);
+    }
+};
+
 std::vector<Sphere> InaccessibilityPoles::computePolesOfInaccessibility(const std::shared_ptr<ModelSpaceMesh>& mesh, size_t numberOfPoles){
 
-    static std::unordered_map<std::pair<size_t,std::shared_ptr<ModelSpaceMesh>>, std::vector<Sphere>> cache;
+    static std::unordered_map<std::pair<size_t,std::shared_ptr<ModelSpaceMesh>>, std::vector<Sphere>, MeshCacheKeyHash> cache;
 
     // Check if the result is already cached
     if (cache.find({numberOfPoles, mesh}) != cache.end()) {

@@ -28,8 +28,8 @@ FetchContent_Declare(MeshCore
 )
 FetchContent_MakeAvailable(MeshCore)
 
-add_executable(packer main.cpp ${SOURCES})
-target_link_libraries(packer PUBLIC MeshCore)
+add_executable(StripPacking_Fixed_Rotation StripPacking_Fixed_Rotation.cpp ${SOURCES})
+target_link_libraries(StripPacking_Fixed_Rotation PUBLIC MeshCore)
 
-add_executable(StripPacking_GLS StripPacking_GLS.cpp ${SOURCES})
-target_link_libraries(StripPacking_GLS PUBLIC MeshCore)
+add_executable(StripPacking_Discrete_Rotation StripPacking_Discrete_Rotation.cpp ${SOURCES})
+target_link_libraries(StripPacking_Discrete_Rotation PUBLIC MeshCore)
