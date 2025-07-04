@@ -5,10 +5,12 @@
 #include <fstream>
 
 #include <meshcore/acceleration/CachingBoundsTreeFactory.h>
-#include "meshcore/rendering/ApplicationWindow.h"
-#include "meshcore/geometric/Intersection.h"
-#include "meshcore/utility/Random.h"
-#include "meshcore/optimization/StripPackingProblem.h"
+#include <meshcore/rendering/ApplicationWindow.h>
+#include <meshcore/geometric/Intersection.h>
+#include <meshcore/utility/Random.h>
+#include <meshcore/optimization/StripPackingProblem.h>
+
+#include "../datasets/StripPackingInstances.h"
 
 #include "InaccessibilityPoles.h"
 #include "EnhancedStripPackingSolution.h"
@@ -656,7 +658,7 @@ public:
 
 int main(int argc, char *argv[]){
 
-    Task task(StripPackingProblem::fromInstancePath(LAMAS_FERNANDEZ_2022_CHESS , ObjectOrigin::AlignToMinimum));
+    Task task(StripPackingProblem::fromInstancePath(LAMAS_FERNANDEZ_2022_CHESS, ObjectOrigin::AlignToMinimum));
 
     QApplication app(argc, argv);
     ApplicationWindow window;

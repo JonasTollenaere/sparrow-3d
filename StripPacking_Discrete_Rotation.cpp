@@ -3,7 +3,7 @@
 //
 
 #include <fstream>
-#include <boost/parameter/aux_/pack/item.hpp>
+#include <../datasets/StripPackingInstances.h>
 
 #include <meshcore/acceleration/CachingBoundsTreeFactory.h>
 #include "meshcore/rendering/ApplicationWindow.h"
@@ -65,8 +65,8 @@ float overlap_proxy_decay(const std::shared_ptr<EnhancedStripPackingSolution>& s
     const Transformation transformationAtoB = solution->getItemTransformation(itemIndexB).getInverse() * solution->getItemTransformation(itemIndexA);
 
     auto result = 0.0f;
-    assert(!itemA.getPolesOfInaccessibility().empty());
-    assert(!itemB.getPolesOfInaccessibility().empty());
+    assert(!solution->getPolesOfInaccessibility(itemIndexA).empty());
+    assert(!solution->getPolesOfInaccessibility(itemIndexB).empty());
     for (const auto & pA : solution->getPolesOfInaccessibility(itemIndexA)) {
         auto poleA = pA.getTransformed(transformationAtoB);
         for (const auto & poleB : solution->getPolesOfInaccessibility(itemIndexB)) {
@@ -76,7 +76,7 @@ float overlap_proxy_decay(const std::shared_ptr<EnhancedStripPackingSolution>& s
         }
     }
     assert(result > 0.0f);
-    assert(result >= overlap_proxy(itemA, itemB)); // Decay should not reduce the overlap
+    assert(result >= overlap_proxy(solution, itemIndexA, itemIndexB)); // Decay should not reduce the overlap
     return result;
 }
 
@@ -177,7 +177,6 @@ void search_position(std::shared_ptr<EnhancedStripPackingSolution>& solution, fl
     // Store sampled evaluations, sorted by placement quality
     std::map<float, std::pair<Quaternion, glm::vec3>> sampledPlacements;
 
-    // TODO do we include the initial position in the sampled positions?
     auto originalEvaluation = evaluate_item_sample(solution, itemIndex, collisionWeights);
     sampledPlacements[originalEvaluation] = {initialRotation, initialPosition};
 
@@ -199,13 +198,11 @@ void search_position(std::shared_ptr<EnhancedStripPackingSolution>& solution, fl
 
         glm::vec3 sampledPosition = sample_position(validTranslationRange.value(), random);
 
-        // TODO what if rotation is never feasible? no valid AABB where min < max
-
         // Set the item's position to the sampled position
         newTransformation.setPosition(sampledPosition);
         solution->setItemTransformation(itemIndex, newTransformation);
 
-        assert(is_contained(solution, *item));
+        assert(is_contained(solution, itemIndex));
 
         // Evaluate the placement quality
         sampledPlacements[evaluate_item_sample(solution, itemIndex, collisionWeights)] = {sampledRotation, sampledPosition};
@@ -218,7 +215,6 @@ void search_position(std::shared_ptr<EnhancedStripPackingSolution>& solution, fl
 
         Quaternion sampledRotation = sample_rotation(random);
 
-        // TODO compensate shift of item center
         auto modelSpaceCenter = solution->getSimplifiedItem(itemIndex)->getModelSpaceMesh()->getCenter();
         auto initialCenterPosition = initialRotation.rotateVertex(modelSpaceCenter);
         auto newCenterPosition = sampledRotation.rotateVertex(modelSpaceCenter);
@@ -251,7 +247,7 @@ void search_position(std::shared_ptr<EnhancedStripPackingSolution>& solution, fl
         newTransformation.setPosition(newPosition);
         solution->setItemTransformation(itemIndex, newTransformation);
 
-        assert(is_contained(solution, *item));
+        assert(is_contained(solution, itemIndex));
 
         // Evaluate the placement quality
         sampledPlacements[evaluate_item_sample(solution, itemIndex, collisionWeights)] = {sampledRotation, newPosition};
@@ -285,15 +281,12 @@ void search_position(std::shared_ptr<EnhancedStripPackingSolution>& solution, fl
             newTransformation.setPosition(newPosition);
             solution->setItemTransformation(itemIndex, newTransformation);
 
-            assert(is_contained(solution, *item));
+            assert(is_contained(solution, itemIndex));
 
             // Evaluate the placement quality
             sampledPlacements[evaluate_item_sample(solution, itemIndex, collisionWeights)] = {initialRotation, newPosition};
         }
     }
-
-    // TODO neighboring samples with different rotations also desired
-
 
     // Refine best positions
     constexpr auto POSITIONS_TO_REFINE = 3;
@@ -310,7 +303,6 @@ void search_position(std::shared_ptr<EnhancedStripPackingSolution>& solution, fl
     }
 
     // Pattern search
-    // TODO we spend most of the time doing this
     for(auto i = 0; i < POSITIONS_TO_REFINE; ++i) {
         auto currentPosition = bestPositions[i];
         auto currentRotation = bestRotations[i];
@@ -375,7 +367,7 @@ void search_position(std::shared_ptr<EnhancedStripPackingSolution>& solution, fl
             }
         }
 
-        assert(is_contained(solution, *item));
+        assert(is_contained(solution, itemIndex));
 
         sampledPlacements[currentEvaluation] = {currentRotation, currentPosition};
     }
@@ -388,7 +380,7 @@ void search_position(std::shared_ptr<EnhancedStripPackingSolution>& solution, fl
     newTransformation.setRotation(bestSample.first);
     solution->setItemTransformation(itemIndex, newTransformation);
 
-    assert(is_contained(solution, *item));
+    assert(is_contained(solution, itemIndex));
 }
 
 struct CollisionMetrics {
@@ -464,10 +456,8 @@ void move_colliding_items(std::shared_ptr<EnhancedStripPackingSolution>& solutio
         // Search for a better position for the item
         search_position(solution, currentHeight, itemIndex, random, collisionWeights);
 
-        assert(is_contained(solution, *solution.getItems()[itemIndex]));
+        assert(is_contained(solution, itemIndex));
     }
-
-    assert(solution.getProblem()->getContainer().containsAABB(solution.getItems()[0]->getAABB()));
 }
 
 CollisionMetrics move_colliding_items_multi(std::shared_ptr<EnhancedStripPackingSolution>& solution, float currentHeight, const CollisionMetrics& metrics, const std::map<std::pair<size_t, size_t>, float> & collisionWeights, const Random& random) {
@@ -548,8 +538,6 @@ void iterate_weights(std::map<std::pair<size_t, size_t>, float>& collisionWeight
             collisionWeights[{i, j}] = newWeight;
         }
     }
-
-    // TODO report weight states or reset if they are too high
 }
 
 std::map<std::pair<size_t, size_t>, float> init_weights(const EnhancedStripPackingSolution& solution) {
@@ -683,7 +671,7 @@ public:
                     auto validTranslationRange = getValidTranslationRange(solution, currentHeight, itemIndex).value();
                     transformation.setPositionZ(glm::clamp(transformation.getPosition().z * REDUCTION_FACTOR, validTranslationRange.getMinimum().z, validTranslationRange.getMaximum().z));
                     solution->setItemTransformation(itemIndex, transformation);
-                    assert(problem->getContainer().containsAABB(item->getAABB())); // Ensure items are not below the ground
+                    assert(problem->getContainer().containsAABB(solution->getItemAABB(itemIndex))); // Ensure items are not below the ground
                 }
 
                 solutionsPool.clear();
@@ -760,7 +748,6 @@ public:
         auto bestHeight = trivialHeight;
 
         // Create a random overlapping solution, half the trivial height
-        // TODO we assume initial rotations fit the container, validTranslationRange has value
         Random random(0);
         notifyObserversStatus("Creating random overlapping solution");
         for (int itemIndex = 0; itemIndex < solution->getItems().size(); ++itemIndex) {
@@ -789,7 +776,7 @@ public:
 
 int main(int argc, char *argv[]){
 
-    Task task(StripPackingProblem::fromInstancePath(LIU_2015_EXAMPLE_1 , ObjectOrigin::AlignToMinimum)); // TODO configure type of rotation
+    Task task(StripPackingProblem::fromInstancePath(LIU_2015_EXAMPLE_1 , ObjectOrigin::AlignToMinimum));
 
     QApplication app(argc, argv);
     ApplicationWindow window;

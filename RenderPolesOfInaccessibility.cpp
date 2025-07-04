@@ -61,14 +61,4 @@ void run(RenderWidget* renderWidget){
         auto color = Color::Red();
         renderWidget->renderSphere("Poles", "Pole " + std::to_string(i), pole, color);
     }
-
-    start = std::chrono::high_resolution_clock::now();
-    auto poles2 = InaccessibilityPoles::computePolesOfInaccessibilityWithFlatOctree(mesh, 25, tree);
-    end = std::chrono::high_resolution_clock::now();
-    std::cout << "Computing poles of inaccessibility using FlatOctree took: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
-
-    for (auto i = 0; i<poles2.size(); i++){
-        auto& pole = poles2[i];
-        renderWidget->renderSphere("Poles2", "Pole " + std::to_string(i), pole, Color::Yellow());
-    }
 }

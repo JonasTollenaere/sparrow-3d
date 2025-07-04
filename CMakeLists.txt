@@ -1,4 +1,4 @@
-project(packer)
+project(sparrow-3d)
 
 cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
 
@@ -9,8 +9,6 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 endif()
-
-file(GLOB SOURCES AlphaWrapper.cpp EnhancedStripPackingSolution.cpp InaccessibilityPoles.cpp)
 
 ### CGAL ###
 set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE "TRUE")
@@ -27,6 +25,9 @@ FetchContent_Declare(MeshCore
         GIT_TAG        embed-optimization
 )
 FetchContent_MakeAvailable(MeshCore)
+
+file(GLOB SOURCES src/*.cpp)
+include_directories(include)
 
 add_executable(StripPacking_Fixed_Rotation StripPacking_Fixed_Rotation.cpp ${SOURCES})
 target_link_libraries(StripPacking_Fixed_Rotation PUBLIC MeshCore)
