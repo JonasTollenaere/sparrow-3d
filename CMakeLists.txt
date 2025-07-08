@@ -21,16 +21,20 @@ add_compile_definitions(GLM_ENABLE_EXPERIMENTAL)
 set(CMAKE_TOOLCHAIN_FILE="C:/Users/Jonas/.vcpkg-clion/vcpkg-mip/scripts/buildsystems/vcpkg.cmake")
 include(FetchContent)
 FetchContent_Declare(MeshCore
-        GIT_REPOSITORY git@gitlab.kuleuven.be:codes/research/meshcore.git
+        GIT_REPOSITORY git@github.com:JonasTollenaere/MeshCore.git
         GIT_TAG        embed-optimization
 )
 FetchContent_MakeAvailable(MeshCore)
 
 file(GLOB SOURCES src/*.cpp)
 include_directories(include)
+add_compile_definitions(SOLUTION_DIR="${CMAKE_CURRENT_SOURCE_DIR}/solutions/")
 
 add_executable(StripPacking_Fixed_Rotation StripPacking_Fixed_Rotation.cpp ${SOURCES})
 target_link_libraries(StripPacking_Fixed_Rotation PUBLIC MeshCore)
 
 add_executable(StripPacking_Discrete_Rotation StripPacking_Discrete_Rotation.cpp ${SOURCES})
 target_link_libraries(StripPacking_Discrete_Rotation PUBLIC MeshCore)
+
+add_executable(Benchmark_Fixed_Rotation Benchmark_Fixed_Rotation.cpp ${SOURCES})
+target_link_libraries(Benchmark_Fixed_Rotation PUBLIC MeshCore)
