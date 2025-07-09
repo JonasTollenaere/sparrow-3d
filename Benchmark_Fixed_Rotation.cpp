@@ -67,9 +67,11 @@ void run(RenderWidget* renderWidget) {
             jsonOutputFile << solutionJSON.dump(4);
             jsonOutputFile.close();
 
-            // Open a csv file, write the header if it doesn't exist yet
-            std::ofstream csvFile(std::string(SOLUTION_DIR) + "benchmark/benchmark_results.csv", std::ios::app);
-            if (csvFile.tellp() == 0) {
+            // Check if CSV file exists before opening
+            std::string csvFilePath = std::string(SOLUTION_DIR) + "benchmark/benchmark_results.csv";
+            bool csvFileExists = std::ifstream(csvFilePath).good();
+            std::ofstream csvFile(csvFilePath, std::ios::app);
+            if (!csvFileExists) {
                 csvFile << "Instance,Seed,Best height 05 minutes,"
                         << "Best height 10 minutes,Best height 20 minutes,"
                         << "Best height 30 minutes,Best height 60 minutes,"
@@ -84,6 +86,8 @@ void run(RenderWidget* renderWidget) {
                     << observer.getBestHeight() << ","
                     << observer.getTargetHeight() << ","
                     << observer.getTargetHeightMilliseconds() << "\n";
+
+            csvFile.close();
         }
     }
 }

@@ -74,7 +74,7 @@ public:
 
     bool separate(std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t maxAttempts, size_t maxIterationsWithoutImprovement, float currentHeight, Random& random);
 
-    std::shared_ptr<EnhancedStripPackingSolution> explore(std::shared_ptr<EnhancedStripPackingSolution>& solution, float initialHeight);
+    std::shared_ptr<EnhancedStripPackingSolution> explore(std::shared_ptr<EnhancedStripPackingSolution>& solution, float initialHeight, float minimumHeight);
 
     void run() override;
 

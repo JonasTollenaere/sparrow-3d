@@ -140,7 +140,7 @@ glm::vec3 FixedRotationStripPackingTask::sample_position(const AABB &range, cons
     glm::vec3 position;
     position.x = (range.getMinimum().x < range.getMaximum().x) ? random.nextFloat(range.getMinimum().x, range.getMaximum().x) : range.getMinimum().x;
     position.y = (range.getMinimum().y < range.getMaximum().y) ? random.nextFloat(range.getMinimum().y, range.getMaximum().y) : range.getMinimum().y;
-    position.z = random.nextFloat(range.getMinimum().z, range.getMaximum().z);
+    position.z = (range.getMinimum().z < range.getMaximum().z) ? random.nextFloat(range.getMinimum().z, range.getMaximum().z) : range.getMinimum().z;
     return position;
 }
 
@@ -150,7 +150,7 @@ void FixedRotationStripPackingTask::search_position(std::shared_ptr<EnhancedStri
 
     auto& item = solution->getItem(itemIndex);
     const auto initialPosition = item->getModelTransformation().getPosition();
-    auto validTranslationRange = getValidTranslationRange(solution, containerHeight, itemIndex);
+    const auto validTranslationRange = getValidTranslationRange(solution, containerHeight, itemIndex);
 
     // Store sampled evaluations, sorted by placement quality
     std::map<float, glm::vec3> sampledPositions;
@@ -513,7 +513,7 @@ bool FixedRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPackin
 }
 
 std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::explore(
-    std::shared_ptr<EnhancedStripPackingSolution> &solution, float initialHeight) {
+    std::shared_ptr<EnhancedStripPackingSolution> &solution, float initialHeight, float minimumHeight) {
 
     Random random(seed);
     auto bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone());
@@ -532,9 +532,14 @@ std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::exp
             std::cout << std::endl;
             bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone());
 
+            if (currentHeight == minimumHeight) {
+                return bestSolution; // We achieved the lower bound height (largest item), no need to continue
+            }
+
             // shrink strip
             constexpr auto REDUCTION_FACTOR = 0.995f;
             currentHeight *= REDUCTION_FACTOR;
+            currentHeight = std::max(currentHeight, minimumHeight);
             for (auto itemIndex = 0; itemIndex < solution->getNumberOfItems(); ++itemIndex) {
                 auto& item = solution->getItem(itemIndex);
                 auto transformation = item->getModelTransformation();
@@ -630,7 +635,7 @@ void FixedRotationStripPackingTask::run() {
 
 
     notifyObserversStatus("Starting exploration");
-    bestSolution = explore(solution, currentHeight);
+    bestSolution = explore(solution, currentHeight, minimumHeight);
 
     notifyObserversSolution(bestSolution);
 
