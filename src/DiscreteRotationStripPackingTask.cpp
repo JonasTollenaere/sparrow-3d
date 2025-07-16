@@ -1,8 +1,8 @@
 //
-// Created by Jonas Tollenaere on 05/07/2025.
+// Created by Jonas Tollenaere on 16/07/2025.
 //
 
-#include "FixedRotationStripPackingTask.h"
+#include "../include/DiscreteRotationStripPackingTask.h"
 
 #include <fstream>
 
@@ -13,23 +13,25 @@
 
 #include "InaccessibilityPoles.h"
 
-bool FixedRotationStripPackingTask::collide(const std::shared_ptr<EnhancedStripPackingSolution> &solution,
-                                            size_t itemIndexA, size_t itemIndexB) {
+bool DiscreteRotationStripPackingTask::is_contained(const std::shared_ptr<EnhancedStripPackingSolution> &solution,
+    size_t itemIndex) {
+    return solution->getProblem()->getContainer().containsAABB(solution->getItemAABB(itemIndex));
+}
 
-    const auto& itemA = solution->getSimplifiedItem(itemIndexA);
-    const auto& itemB = solution->getSimplifiedItem(itemIndexB);
+bool DiscreteRotationStripPackingTask::collide(const std::shared_ptr<EnhancedStripPackingSolution> &solution,
+    size_t itemIndexA, size_t itemIndexB) {
 
     // First quick reject if bounding boxes do not intersect
-    const auto& translationAtoB = - itemB->getModelTransformation().getPosition() + itemA->getModelTransformation().getPosition();
-    auto boxA = solution->getItem(itemIndexA)->getModelSpaceMesh()->getBounds().getTranslated(translationAtoB);
-    auto& boxB = solution->getItem(itemIndexB)->getModelSpaceMesh()->getBounds();
+    auto boxA = solution->getItemAABB(itemIndexA); // Store the boxes for different computations, avoid recomputing them
+    auto boxB = solution->getItemAABB(itemIndexB);
     if (!Intersection::intersect(boxA, boxB)) {
         return false; // Bounding boxes do not intersect
     }
 
     // Quick intersection guarantee when poles of inaccessibility intersect
+    Transformation transformationAtoB = solution->getItemTransformation(itemIndexB).getInverse() * solution->getItemTransformation(itemIndexA);
     for (const auto & pA : solution->getPolesOfInaccessibility(itemIndexA)) {
-        auto poleA = Sphere(pA.getCenter() + translationAtoB, pA.getRadius());
+        auto poleA = pA.getTransformed(transformationAtoB);
         for (const auto & poleB : solution->getPolesOfInaccessibility(itemIndexB)) {
             if (Intersection::intersect(poleA, poleB)) {
                 return true;
@@ -37,17 +39,17 @@ bool FixedRotationStripPackingTask::collide(const std::shared_ptr<EnhancedStripP
         }
     }
 
-    // Actual intersection test
-    return Intersection::intersect(*itemA, *itemB);
+    // Actual intersection test (default pipeline, reworked)
+    return Intersection::intersect(*solution->getSimplifiedItem(itemIndexA), *solution->getSimplifiedItem(itemIndexB));
 }
 
-float FixedRotationStripPackingTask::overlap_proxy(const std::shared_ptr<EnhancedStripPackingSolution> &solution,
+float DiscreteRotationStripPackingTask::overlap_proxy(const std::shared_ptr<EnhancedStripPackingSolution> &solution,
     size_t itemIndexA, size_t itemIndexB) {
     auto result = 0.0f;
-    const glm::vec3 translationAtoB = - solution->getItem(itemIndexB)->getModelTransformation().getPosition() + solution->getItem(itemIndexA)->getModelTransformation().getPosition();
     for (const auto & pA : solution->getPolesOfInaccessibility(itemIndexA)) {
-        Sphere poleA(pA.getCenter() + translationAtoB, pA.getRadius());
-        for (const auto & poleB : solution->getPolesOfInaccessibility(itemIndexB)) {
+        auto poleA = pA.getTransformed(solution->getItemTransformation(itemIndexA));
+        for (const auto & pB : solution->getPolesOfInaccessibility(itemIndexB)) {
+            auto poleB = pB.getTransformed(solution->getItemTransformation(itemIndexB));
             const auto penetrationDepth = poleA.getRadius() + poleB.getRadius() - glm::length(poleA.getCenter() - poleB.getCenter());
             if (penetrationDepth > 0) result += penetrationDepth * std::min(poleA.getRadius(), poleB.getRadius());
         }
@@ -55,17 +57,21 @@ float FixedRotationStripPackingTask::overlap_proxy(const std::shared_ptr<Enhance
     return result;
 }
 
-float FixedRotationStripPackingTask::overlap_proxy_decay(const std::shared_ptr<EnhancedStripPackingSolution> &solution,
-    size_t itemIndexA, size_t itemIndexB) {
-    auto eps = 1e-2f * std::max(glm::length(solution->getSimplifiedItem(itemIndexA)->getModelSpaceMesh()->getBounds().getHalf()),
-                                glm::length(solution->getSimplifiedItem(itemIndexB)->getModelSpaceMesh()->getBounds().getHalf()));
+float DiscreteRotationStripPackingTask::overlap_proxy_decay(
+    const std::shared_ptr<EnhancedStripPackingSolution> &solution, size_t itemIndexA, size_t itemIndexB) {
+    auto eps = 1e-2f * std::max(
+                   glm::length(solution->getSimplifiedItem(itemIndexA)->getModelSpaceMesh()->getBounds().getHalf()),
+                   glm::length(solution->getSimplifiedItem(itemIndexB)->getModelSpaceMesh()->getBounds().getHalf())
+               );
+
+
+    const Transformation transformationAtoB = solution->getItemTransformation(itemIndexB).getInverse() * solution->getItemTransformation(itemIndexA);
 
     auto result = 0.0f;
     assert(!solution->getPolesOfInaccessibility(itemIndexA).empty());
     assert(!solution->getPolesOfInaccessibility(itemIndexB).empty());
-    const glm::vec3 translationAtoB = - solution->getItem(itemIndexB)->getModelTransformation().getPosition() + solution->getItem(itemIndexA)->getModelTransformation().getPosition();
     for (const auto & pA : solution->getPolesOfInaccessibility(itemIndexA)) {
-        Sphere poleA(pA.getCenter()+translationAtoB, pA.getRadius());
+        auto poleA = pA.getTransformed(transformationAtoB);
         for (const auto & poleB : solution->getPolesOfInaccessibility(itemIndexB)) {
             auto delta = poleA.getRadius() + poleB.getRadius() - glm::length(poleA.getCenter() - poleB.getCenter());
             auto deltaPrime = delta > eps ? delta : eps * eps/(2*eps - delta) ;
@@ -77,9 +83,9 @@ float FixedRotationStripPackingTask::overlap_proxy_decay(const std::shared_ptr<E
     return result;
 }
 
-float FixedRotationStripPackingTask::quantify_collision(const std::shared_ptr<EnhancedStripPackingSolution> &solution,
-    size_t itemIndexA, size_t itemIndexB) {
-    auto alpha = overlap_proxy_decay(solution, itemIndexA,itemIndexB);
+float DiscreteRotationStripPackingTask::quantify_collision(
+    const std::shared_ptr<EnhancedStripPackingSolution> &solution, size_t itemIndexA, size_t itemIndexB) {
+    auto alpha = overlap_proxy_decay(solution, itemIndexA, itemIndexB);
     auto lambdaA = std::pow(solution->getSimplifiedItem(itemIndexA)->getModelSpaceMesh()->getConvexHull()->getVolume(), 1.0f/3.0f);
     auto lambdaB = std::pow(solution->getSimplifiedItem(itemIndexB)->getModelSpaceMesh()->getConvexHull()->getVolume(), 1.0f/3.0f);
     auto lambdaAB = std::sqrt(lambdaA * lambdaB);
@@ -88,21 +94,31 @@ float FixedRotationStripPackingTask::quantify_collision(const std::shared_ptr<En
     return result;
 }
 
-AABB FixedRotationStripPackingTask::getValidTranslationRange(
+std::optional<AABB> DiscreteRotationStripPackingTask::getValidTranslationRange(
     const std::shared_ptr<EnhancedStripPackingSolution> &solution, float containerHeight, size_t itemIndex) {
-
     const auto& item = solution->getItem(itemIndex);
 
     auto containerMinimum = solution->getProblem()->getContainer().getMinimum();
     auto containerMaximum = solution->getProblem()->getContainer().getMaximum();
     containerMaximum.z = containerHeight;
 
-    auto minimumTranslation = containerMinimum - item->getModelSpaceMesh()->getBounds().getMinimum();
-    auto maximumTranslation = containerMaximum - item->getModelSpaceMesh()->getBounds().getMaximum();
-    return {minimumTranslation, maximumTranslation};
+    auto aabb = solution->getItemAABB(itemIndex);
+
+    auto min = containerMinimum - aabb.getMinimum();
+    auto max = containerMaximum - aabb.getMaximum();
+
+    if (!glm::all(glm::lessThanEqual(min, max))) {
+        return std::nullopt;
+    }
+
+    // AABB is computed with current translation, compensate for this;
+    min += item->getModelTransformation().getPosition();
+    max += item->getModelTransformation().getPosition();
+
+    return AABB{min, max};
 }
 
-std::vector<bool> FixedRotationStripPackingTask::getCollidingItems(
+std::vector<bool> DiscreteRotationStripPackingTask::getCollidingItems(
     const std::shared_ptr<EnhancedStripPackingSolution> &solution) {
     const size_t numberOfItems = solution->getNumberOfItems();
     std::vector collidingItems(numberOfItems, false);
@@ -117,8 +133,9 @@ std::vector<bool> FixedRotationStripPackingTask::getCollidingItems(
     return collidingItems;
 }
 
-float FixedRotationStripPackingTask::evaluate_item_sample(const std::shared_ptr<EnhancedStripPackingSolution> &solution,
-    size_t itemIndex, const std::map<std::pair<size_t, size_t>, float> &collisionWeights) {
+float DiscreteRotationStripPackingTask::evaluate_item_sample(
+    const std::shared_ptr<EnhancedStripPackingSolution> &solution, size_t itemIndex,
+    const std::map<std::pair<size_t, size_t>, float> &collisionWeights) {
 
     auto result = 0.0f;
 
@@ -136,97 +153,202 @@ float FixedRotationStripPackingTask::evaluate_item_sample(const std::shared_ptr<
     return result;
 }
 
-glm::vec3 FixedRotationStripPackingTask::sample_position(const AABB &range, const Random &random) {
+float DiscreteRotationStripPackingTask::sample_angle(const Random &random, size_t steps) {
+    size_t step = random.nextUnsignedInteger(0, steps - 1);
+    float angle = 2.0f * glm::pi<float>() * static_cast<float>(step) / static_cast<float>(steps);
+    return angle;
+}
+
+Quaternion DiscreteRotationStripPackingTask::sample_rotation(const Random &random) {
+    const auto angleIndex = random.nextInteger(0, 2);
+    const auto randomAngle = sample_angle(random, 8);
+    auto YPR = glm::vec3(0.0f, 0.0f, 0.0f);
+    YPR[angleIndex] = randomAngle;
+    return Quaternion(YPR.x, YPR.y, YPR.z);
+}
+
+glm::vec3 DiscreteRotationStripPackingTask::sample_position(const AABB &range, const Random &random) {
     glm::vec3 position;
     position.x = (range.getMinimum().x < range.getMaximum().x) ? random.nextFloat(range.getMinimum().x, range.getMaximum().x) : range.getMinimum().x;
     position.y = (range.getMinimum().y < range.getMaximum().y) ? random.nextFloat(range.getMinimum().y, range.getMaximum().y) : range.getMinimum().y;
-    position.z = (range.getMinimum().z < range.getMaximum().z) ? random.nextFloat(range.getMinimum().z, range.getMaximum().z) : range.getMinimum().z;
+    position.z = random.nextFloat(range.getMinimum().z, range.getMaximum().z);
     return position;
 }
 
-void FixedRotationStripPackingTask::search_position(std::shared_ptr<EnhancedStripPackingSolution> &solution,
-    float containerHeight, size_t itemIndex, const Random &random,
-    const std::map<std::pair<size_t, size_t>, float> &collisionWeights) {
+void DiscreteRotationStripPackingTask::search_position(std::shared_ptr<EnhancedStripPackingSolution> &solution,
+                                                       float containerHeight, size_t itemIndex, const Random &random,
+                                                       const std::map<std::pair<size_t, size_t>, float> &collisionWeights) {
 
     auto& item = solution->getItem(itemIndex);
     const auto initialPosition = item->getModelTransformation().getPosition();
-    const auto validTranslationRange = getValidTranslationRange(solution, containerHeight, itemIndex);
+    const auto initialRotation = item->getModelTransformation().getRotation();
 
     // Store sampled evaluations, sorted by placement quality
-    std::map<float, glm::vec3> sampledPositions;
+    std::map<float, std::pair<Quaternion, glm::vec3>> sampledPlacements;
 
     auto originalEvaluation = evaluate_item_sample(solution, itemIndex, collisionWeights);
-    sampledPositions[originalEvaluation] = initialPosition;
+    sampledPlacements[originalEvaluation] = {initialRotation, initialPosition};
 
     // Uniform samples in container
-    for (auto sampleIndex = 0; sampleIndex < 25; ++sampleIndex) {
-        glm::vec3 samplePosition = sample_position(validTranslationRange, random);
+    for (auto sampleIndex = 0; sampleIndex < 100; ++sampleIndex) {
+
+        Quaternion sampledRotation = sample_rotation(random);
 
         // Set the item's position to the sampled position
         Transformation newTransformation = item->getModelTransformation();
-        newTransformation.setPosition(samplePosition);
+        newTransformation.setRotation(sampledRotation);
         solution->setItemTransformation(itemIndex, newTransformation);
 
+        auto validTranslationRange = getValidTranslationRange(solution, containerHeight, itemIndex);
+
+        if (!validTranslationRange.has_value()) {
+            continue; // We won't be able to find a valid position in the container for this orientation
+        }
+
+        glm::vec3 sampledPosition = sample_position(validTranslationRange.value(), random);
+
+        // Set the item's position to the sampled position
+        newTransformation.setPosition(sampledPosition);
+        solution->setItemTransformation(itemIndex, newTransformation);
+
+        assert(is_contained(solution, itemIndex));
+
         // Evaluate the placement quality
-        sampledPositions[evaluate_item_sample(solution, itemIndex, collisionWeights)] = samplePosition;
+        sampledPlacements[evaluate_item_sample(solution, itemIndex, collisionWeights)] = {sampledRotation, sampledPosition};
     }
 
-    // Samples in neighborhood of item's current position
-    for (auto sampleIndex = 0; sampleIndex < 50; ++sampleIndex) {
-        const auto& stepSize = 0.01f;
+    // Rotated samples near the initial position
+    // Seems to work really well, but need to compensate for the shift of the item center
+    // After all; our items reference in model space is the minimum corner of its AABB, not the center
+    for (auto sampleIndex = 0; sampleIndex < 25; ++sampleIndex) {
+
+        Quaternion sampledRotation = sample_rotation(random);
+
+        auto modelSpaceCenter = solution->getSimplifiedItem(itemIndex)->getModelSpaceMesh()->getCenter();
+        auto initialCenterPosition = initialRotation.rotateVertex(modelSpaceCenter);
+        auto newCenterPosition = sampledRotation.rotateVertex(modelSpaceCenter);
+        auto centerShift = newCenterPosition - initialCenterPosition;
+
+        // Set the item's position to the sampled position
+        Transformation newTransformation = item->getModelTransformation();
+        newTransformation.setRotation(sampledRotation);
+        solution->setItemTransformation(itemIndex, newTransformation);
+
+        auto validTranslationRange = getValidTranslationRange(solution, containerHeight, itemIndex);
+
+        if (!validTranslationRange.has_value()) {
+            continue; // We won't be able to find a valid position in the container for this orientation
+        }
+
+        const auto containerHalf = solution->getProblem()->getContainer().getHalf();
+        const auto& stepSize = 0.01f * (containerHalf.x + containerHalf.y);
         glm::vec3 randomShift(random.nextFloat(-stepSize, stepSize),
                               random.nextFloat(-stepSize, stepSize),
                               random.nextFloat(-stepSize, stepSize));
 
-        randomShift *= glm::length(solution->getProblem()->getContainer().getHalf());
+        randomShift -= centerShift; // Compensate for the shift of the item center
 
         // Clamp to initial+shift to valid positions;
-        auto newPosition = validTranslationRange.getClosestPoint(initialPosition + randomShift);
-        assert(validTranslationRange.containsPoint(newPosition));
+        auto newPosition = validTranslationRange.value().getClosestPoint(initialPosition + randomShift);
+        assert(validTranslationRange.value().containsPoint(newPosition));
 
         // Set the item's position to the sampled position
-        Transformation newTransformation = item->getModelTransformation();
         newTransformation.setPosition(newPosition);
         solution->setItemTransformation(itemIndex, newTransformation);
 
+        assert(is_contained(solution, itemIndex));
+
         // Evaluate the placement quality
-        sampledPositions[evaluate_item_sample(solution, itemIndex, collisionWeights)] = newPosition;
+        sampledPlacements[evaluate_item_sample(solution, itemIndex, collisionWeights)] = {sampledRotation, newPosition};
+    }
+
+    // Restore the original rotation
+    Transformation originalTransformation = item->getModelTransformation();
+    originalTransformation.setRotation(initialRotation);
+    originalTransformation.setPosition(initialPosition);
+    solution->setItemTransformation(itemIndex, originalTransformation);
+
+    // Samples in neighborhood of item's current position
+    {
+        auto validTranslationRange = getValidTranslationRange(solution, containerHeight, itemIndex);
+        assert(validTranslationRange.has_value());
+        for (auto sampleIndex = 0; sampleIndex < 25; ++sampleIndex) {
+            const auto containerHalf = solution->getProblem()->getContainer().getHalf();
+            const auto& stepSize = 0.1f * (containerHalf.x + containerHalf.y);
+            glm::vec3 randomShift(random.nextFloat(-stepSize, stepSize),
+                                  random.nextFloat(-stepSize, stepSize),
+                                  random.nextFloat(-stepSize, stepSize));
+
+            randomShift *= glm::length(solution->getProblem()->getContainer().getHalf());
+
+            // Clamp to initial+shift to valid positions;
+            auto newPosition = validTranslationRange.value().getClosestPoint(initialPosition + randomShift);
+            assert(validTranslationRange.value().containsPoint(newPosition));
+
+            // Set the item's position to the sampled position
+            Transformation newTransformation = item->getModelTransformation();
+            newTransformation.setPosition(newPosition);
+            solution->setItemTransformation(itemIndex, newTransformation);
+
+            assert(is_contained(solution, itemIndex));
+
+            // Evaluate the placement quality
+            sampledPlacements[evaluate_item_sample(solution, itemIndex, collisionWeights)] = {initialRotation, newPosition};
+        }
     }
 
     // Refine best positions
     constexpr auto POSITIONS_TO_REFINE = 3;
     glm::vec3 bestPositions[POSITIONS_TO_REFINE];
+    Quaternion bestRotations[POSITIONS_TO_REFINE];
     float bestEvaluations[POSITIONS_TO_REFINE];
     // Place the first POSITIONS_TO_REFINE best positions in the array
-    auto it = sampledPositions.begin();
-    for (auto i = 0; i < POSITIONS_TO_REFINE && it != sampledPositions.end(); ++i, ++it) {
-        bestPositions[i] = it->second;
+    auto it = sampledPlacements.begin();
+    for (auto i = 0; i < POSITIONS_TO_REFINE && it != sampledPlacements.end(); ++i, ++it) {
+        auto& placement = it->second;
+        bestPositions[i] = placement.second;
         bestEvaluations[i] = it->first;
+        bestRotations[i] = placement.first;
     }
 
     // Pattern search
     for(auto i = 0; i < POSITIONS_TO_REFINE; ++i) {
         auto currentPosition = bestPositions[i];
+        auto currentRotation = bestRotations[i];
         auto currentEvaluation = bestEvaluations[i];
         auto stepSize = 0.01f;
         while(stepSize >= 1e-4f && currentEvaluation > 0.0f) {
             bool improved = false;
+
+            glm::dvec3 bestNeighborPosition = currentPosition;
+            float bestNeighborEvaluation = currentEvaluation;
+
             for (auto step : {glm::vec3(stepSize, 0, 0), glm::vec3(-stepSize, 0, 0),
                      glm::vec3(0, stepSize, 0), glm::vec3(0, -stepSize, 0),
                      glm::vec3(0, 0, stepSize), glm::vec3(0, 0, -stepSize)}) {
 
                 step *= glm::length(solution->getProblem()->getContainer().getHalf());
 
-                auto newPosition = validTranslationRange.getClosestPoint(currentPosition + step);
-                assert(validTranslationRange.containsPoint(newPosition));
-
                 Transformation newTransformation = item->getModelTransformation();
+                newTransformation.setRotation(currentRotation);
+                newTransformation.setPosition(currentPosition);
+                solution->setItemTransformation(itemIndex, newTransformation);
+
+                auto validTranslationRange = getValidTranslationRange(solution, containerHeight, itemIndex);
+                assert(validTranslationRange.has_value());
+
+                // Clamp the new position to the valid translation range
+                auto newPosition = validTranslationRange.value().getClosestPoint(currentPosition + step);
+                assert(validTranslationRange.value().containsPoint(newPosition));
+
                 newTransformation.setPosition(newPosition);
                 solution->setItemTransformation(itemIndex, newTransformation);
+
                 auto newEvaluation = evaluate_item_sample(solution, itemIndex, collisionWeights);
-                if (newEvaluation < currentEvaluation) {
-                    currentPosition = newPosition;
-                    currentEvaluation = newEvaluation;
+                if (newEvaluation < bestNeighborEvaluation) {
+
+                    bestNeighborPosition = newPosition;
+                    bestNeighborEvaluation = newEvaluation;
 
                     if (currentEvaluation <= 0.0f) {
                         // If we found a position with negative evaluation, we can stop
@@ -237,32 +359,40 @@ void FixedRotationStripPackingTask::search_position(std::shared_ptr<EnhancedStri
                     }
 
                     improved = true;
+
+                    bool hill_climb = true;
+                    if (hill_climb) break;
                 }
 
             }
             if (!improved) {
                 stepSize *= 0.5f; // Reduce step size
             }
+            else {
+
+                // Update the current position and evaluation
+                currentPosition = bestNeighborPosition;
+                currentEvaluation = bestNeighborEvaluation;;
+            }
         }
-        sampledPositions[currentEvaluation] = currentPosition;
+
+        assert(is_contained(solution, itemIndex));
+
+        sampledPlacements[currentEvaluation] = {currentRotation, currentPosition};
     }
 
     // Apply the best sample
-    auto bestSample = sampledPositions.begin();
-    assert(bestSample->first <= originalEvaluation);
+    auto bestSample = sampledPlacements.begin()->second;
+    assert(sampledPlacements.begin()->first <= originalEvaluation);
     Transformation newTransformation = item->getModelTransformation();
-    newTransformation.setPosition(bestSample->second);
+    newTransformation.setPosition(bestSample.second);
+    newTransformation.setRotation(bestSample.first);
     solution->setItemTransformation(itemIndex, newTransformation);
+
+    assert(is_contained(solution, itemIndex));
 }
 
-FixedRotationStripPackingTask::CollisionMetrics::CollisionMetrics() = default;
-
-FixedRotationStripPackingTask::CollisionMetrics::CollisionMetrics(
-    const std::shared_ptr<EnhancedStripPackingSolution> &solution) {
-    collidingItems.resize(solution->getNumberOfItems(), true);
-}
-
-void FixedRotationStripPackingTask::update_collision_metrics(
+void DiscreteRotationStripPackingTask::update_collision_metrics(
     const std::shared_ptr<EnhancedStripPackingSolution> &solution, CollisionMetrics &metrics) {
 
     // Find intersecting item pairs
@@ -279,7 +409,7 @@ void FixedRotationStripPackingTask::update_collision_metrics(
                     continue;
                 }*/
 
-            const bool isColliding = collide(solution, i,j);
+            const bool isColliding = collide(solution, i, j);
             metrics.collidingItemPairs[{i, j}] = isColliding;
             metrics.collision |= isColliding;
 
@@ -307,9 +437,9 @@ void FixedRotationStripPackingTask::update_collision_metrics(
     }
 }
 
-void FixedRotationStripPackingTask::move_colliding_items(std::shared_ptr<EnhancedStripPackingSolution> &solution,
-    float currentHeight, CollisionMetrics metrics, const std::map<std::pair<size_t, size_t>, float> &collisionWeights,
-    const Random &random) {
+void DiscreteRotationStripPackingTask::move_colliding_items(std::shared_ptr<EnhancedStripPackingSolution> &solution,
+                                                            float currentHeight, CollisionMetrics metrics, const std::map<std::pair<size_t, size_t>, float> &collisionWeights,
+                                                            const Random &random) {
 
     // Iterate over the items in random order
     std::vector<size_t> itemIndices(solution->getNumberOfItems());
@@ -322,10 +452,12 @@ void FixedRotationStripPackingTask::move_colliding_items(std::shared_ptr<Enhance
 
         // Search for a better position for the item
         search_position(solution, currentHeight, itemIndex, random, collisionWeights);
+
+        assert(is_contained(solution, itemIndex));
     }
 }
 
-FixedRotationStripPackingTask::CollisionMetrics FixedRotationStripPackingTask::move_colliding_items_multi(
+DiscreteRotationStripPackingTask::CollisionMetrics DiscreteRotationStripPackingTask::move_colliding_items_multi(
     std::shared_ptr<EnhancedStripPackingSolution> &solution, float currentHeight, const CollisionMetrics &metrics,
     const std::map<std::pair<size_t, size_t>, float> &collisionWeights, const Random &random) {
 
@@ -377,13 +509,13 @@ FixedRotationStripPackingTask::CollisionMetrics FixedRotationStripPackingTask::m
     return workerMetrics[bestIndex];
 }
 
-void FixedRotationStripPackingTask::iterate_weights(std::map<std::pair<size_t, size_t>, float> &collisionWeights,
-    const EnhancedStripPackingSolution &solution, std::map<std::pair<size_t, size_t>, float> &collisionQuantities,
-    const std::map<std::pair<size_t, size_t>, bool> &collidingItemPairs, const float e_max) {
+void DiscreteRotationStripPackingTask::iterate_weights(std::map<std::pair<size_t, size_t>, float> &collisionWeights,
+                                                       const EnhancedStripPackingSolution &solution, std::map<std::pair<size_t, size_t>, float> &collisionQuantities,
+                                                       const std::map<std::pair<size_t, size_t>, bool> &collidingItemPairs, const float e_max) {
 
     // Update collision weights based on the current collisions
-    for (size_t i = 0; i < solution.getNumberOfItems(); ++i) {
-        for (size_t j = i + 1; j < solution.getNumberOfItems(); ++j) {
+    for (size_t i = 0; i < solution.getItems().size(); ++i) {
+        for (size_t j = i + 1; j < solution.getItems().size(); ++j) {
 
             float factor;
             assert(collidingItemPairs.find({i, j}) != collidingItemPairs.end());
@@ -409,23 +541,18 @@ void FixedRotationStripPackingTask::iterate_weights(std::map<std::pair<size_t, s
     }
 }
 
-std::map<std::pair<size_t, size_t>, float> FixedRotationStripPackingTask::init_weights(
+std::map<std::pair<size_t, size_t>, float> DiscreteRotationStripPackingTask::init_weights(
     const EnhancedStripPackingSolution &solution) {
     std::map<std::pair<size_t, size_t>, float> collisionWeights;
-    for (size_t i = 0; i < solution.getNumberOfItems(); ++i) {
-        for (size_t j = i + 1; j < solution.getNumberOfItems(); ++j) {
+    for (size_t i = 0; i < solution.getItems().size(); ++i) {
+        for (size_t j = i + 1; j < solution.getItems().size(); ++j) {
             collisionWeights[{i, j}] = 1.0f; // Initial weight
         }
     }
     return collisionWeights;
 }
 
-FixedRotationStripPackingTask::FixedRotationStripPackingTask(const std::shared_ptr<StripPackingProblem> &problem): problem(problem) {}
-
-FixedRotationStripPackingTask::FixedRotationStripPackingTask(const std::shared_ptr<StripPackingProblem> &problem,
-    int seed): problem(problem), seed(seed) {}
-
-bool FixedRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPackingSolution> &solution,
+bool DiscreteRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPackingSolution> &solution,
     size_t maxAttempts, size_t maxIterationsWithoutImprovement, float currentHeight, Random &random) {
 
     auto n = 0; // Strike counter
@@ -454,12 +581,12 @@ bool FixedRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPackin
             if (true) {
                 move_colliding_items(currentSolution, currentHeight, metrics, collisionWeights, random);
                 update_collision_metrics(currentSolution, metrics);
+                notifyObserversSolution(currentSolution);
             }
             else {
                 metrics = move_colliding_items_multi(currentSolution, currentHeight, metrics, collisionWeights, random);
+                notifyObserversSolution(currentSolution);
             }
-
-            //notifyObserversSolution(currentSolution);
 
             iterate_weights(collisionWeights, *currentSolution, metrics.collisionQuantities, metrics.collidingItemPairs, metrics.worstCollisionQuantity);
             i++;
@@ -473,7 +600,7 @@ bool FixedRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPackin
                     assert(solution->isFeasible());
                     if (!solution->isFeasible()) {
 
-                        for (int itemIndex = 0; itemIndex < solution->getNumberOfItems(); ++itemIndex) {
+                        for (int itemIndex = 0; itemIndex < solution->getItems().size(); ++itemIndex) {
                             auto validRange = getValidTranslationRange(*solution, currentHeight, itemIndex);
                             auto inValidRange = validRange.containsPoint(solution->getItems()[itemIndex]->getModelTransformation().getPosition());
                             std::cout << itemIndex << ": " << inValidRange << std::endl;
@@ -487,7 +614,7 @@ bool FixedRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPackin
 
             if (metrics.totalCollisionQuantity < bestCollisionQuantity) {
                 std::cout << "Improved total collision quantity to " << metrics.totalCollisionQuantity << std::endl;
-                //notifyObserversSolution(bestSolution);
+                notifyObserversSolution(bestSolution);
                 bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(currentSolution->clone());
                 bestCollisionQuantity = metrics.totalCollisionQuantity;
                 i = 0;
@@ -512,7 +639,7 @@ bool FixedRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPackin
     return false;
 }
 
-std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::explore(
+std::shared_ptr<EnhancedStripPackingSolution> DiscreteRotationStripPackingTask::explore(
     std::shared_ptr<EnhancedStripPackingSolution> &solution, float initialHeight, float minimumHeight) {
 
     Random random(seed);
@@ -524,7 +651,7 @@ std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::exp
     std::vector<std::shared_ptr<EnhancedStripPackingSolution>> solutionsPool;
 
     while (elapsedMilliseconds < allowedRunTimeMilliseconds && !stopCalled) {
-        bool separated = separate(solution, 3, 200, currentHeight, random);
+        bool separated = separate(solution, 3, 100, currentHeight, random);
         if (separated) {
             notifyObserversSolution(solution);
             notifyObserversStatus("Achieved height " + std::to_string(currentHeight));
@@ -540,10 +667,10 @@ std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::exp
             constexpr auto REDUCTION_FACTOR = 0.995f;
             currentHeight *= REDUCTION_FACTOR;
             currentHeight = std::max(currentHeight, minimumHeight);
-            for (auto itemIndex = 0; itemIndex < solution->getNumberOfItems(); ++itemIndex) {
-                auto& item = solution->getItem(itemIndex);
+            for (auto itemIndex = 0; itemIndex < solution->getItems().size(); ++itemIndex) {
+                auto& item = solution->getItems()[itemIndex];
                 auto transformation = item->getModelTransformation();
-                auto validTranslationRange = getValidTranslationRange(solution, currentHeight, itemIndex);
+                auto validTranslationRange = getValidTranslationRange(solution, currentHeight, itemIndex).value();
                 transformation.setPositionZ(glm::clamp(transformation.getPosition().z * REDUCTION_FACTOR, validTranslationRange.getMinimum().z, validTranslationRange.getMaximum().z));
                 solution->setItemTransformation(itemIndex, transformation);
                 assert(problem->getContainer().containsAABB(solution->getItemAABB(itemIndex))); // Ensure items are not below the ground
@@ -556,20 +683,20 @@ std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::exp
             solutionsPool.push_back(std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone()));
             auto solutionToDisrupt = solutionsPool[random.nextInteger(0, solutionsPool.size() - 1)];
 
-            auto itemIndexA = random.nextInteger(0, solutionToDisrupt->getNumberOfItems() - 1);
-            auto itemIndexB = random.nextInteger(0, solutionToDisrupt->getNumberOfItems() - 2);
+            auto itemIndexA = random.nextInteger(0, solutionToDisrupt->getItems().size() - 1);
+            auto itemIndexB = random.nextInteger(0, solutionToDisrupt->getItems().size() - 2);
             if (itemIndexB == itemIndexA) itemIndexB++;
 
-            auto newPosA = solutionToDisrupt->getItem(itemIndexB)->getModelTransformation().getPosition();
-            auto newPosB = solutionToDisrupt->getItem(itemIndexA)->getModelTransformation().getPosition();
-            newPosA = getValidTranslationRange(solution, currentHeight, itemIndexA).getClosestPoint(newPosA);
-            newPosB = getValidTranslationRange(solution, currentHeight, itemIndexB).getClosestPoint(newPosB);
+            auto newPosA = solutionToDisrupt->getItems()[itemIndexB]->getModelTransformation().getPosition();
+            auto newPosB = solutionToDisrupt->getItems()[itemIndexA]->getModelTransformation().getPosition();
+            newPosA = getValidTranslationRange(solution, currentHeight, itemIndexA).value().getClosestPoint(newPosA);
+            newPosB = getValidTranslationRange(solution, currentHeight, itemIndexB).value().getClosestPoint(newPosB);
 
-            auto newTransformationA = solutionToDisrupt->getItem(itemIndexA)->getModelTransformation();
+            auto newTransformationA = solutionToDisrupt->getItems()[itemIndexA]->getModelTransformation();
             newTransformationA.setPosition(newPosA);
             solutionToDisrupt->setItemTransformation(itemIndexA, newTransformationA);
 
-            auto newTransformationB = solutionToDisrupt->getItem(itemIndexB)->getModelTransformation();
+            auto newTransformationB = solutionToDisrupt->getItems()[itemIndexB]->getModelTransformation();
             newTransformationB.setPosition(newPosB);
             solutionToDisrupt->setItemTransformation(itemIndexB, newTransformationB);
 
@@ -582,7 +709,7 @@ std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::exp
     return bestSolution;
 }
 
-void FixedRotationStripPackingTask::run() {
+void DiscreteRotationStripPackingTask::run() {
 
     this->notifyObserversStatus("Initialising");
 
@@ -594,8 +721,8 @@ void FixedRotationStripPackingTask::run() {
     std::cout << "Creating solution took " << (endms-startms) << "ms" << std::endl;
 
     // Create a trivial solution
-    auto trivialHeight = 0.0f; // Height of the trivial solution
-    auto minimumHeight = 0.0f; // Minimum height of a solution determined by the highest item
+    auto trivialHeight = 0.0f;
+    auto minimumHeight = 0.0f;
     {
         notifyObserversStatus("Creating trivial solution");
         auto currentHeight = 0.0f;
@@ -619,13 +746,14 @@ void FixedRotationStripPackingTask::run() {
     auto currentHeight = 0.5f * trivialHeight;
     currentHeight = std::max(currentHeight, minimumHeight);
     auto bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone());
+    auto bestHeight = trivialHeight;
 
     // Create a random overlapping solution, half the trivial height
     Random random(0);
     notifyObserversStatus("Creating random overlapping solution");
-    for (int itemIndex = 0; itemIndex < solution->getNumberOfItems(); ++itemIndex) {
-        auto& item = solution->getItem(itemIndex);
-        AABB validTranslationRange = getValidTranslationRange(solution, currentHeight, itemIndex);
+    for (int itemIndex = 0; itemIndex < solution->getItems().size(); ++itemIndex) {
+        auto& item = solution->getItems()[itemIndex];
+        AABB validTranslationRange = getValidTranslationRange(solution, currentHeight, itemIndex).value();
         glm::vec3 randomPosition = sample_position(validTranslationRange, random);
         auto newTransformation = item->getModelTransformation();
         newTransformation.setPosition(randomPosition);
@@ -641,20 +769,19 @@ void FixedRotationStripPackingTask::run() {
 
     // Export the best solution
     auto solutionJSON = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(bestSolution)->toJson();
-    std::ofstream jsonOutputFile(SOLUTION_DIR + problem->getName() + "_Fixed_" + std::to_string(seed) + "_" + std::to_string(bestSolution->computeTotalHeight()) + ".json");
+    std::ofstream jsonOutputFile(SOLUTION_DIR + problem->getName() + "_Discrete_" + std::to_string(seed) + "_" + std::to_string(bestSolution->computeTotalHeight()) + ".json");
     jsonOutputFile << solutionJSON.dump(4);
     jsonOutputFile.close();
 }
 
-void FixedRotationStripPackingTask::setSeed(int seed) {
+void DiscreteRotationStripPackingTask::setSeed(int seed) {
     this->seed = seed;
 }
 
-void FixedRotationStripPackingTask::setAllowedRunTimeMilliseconds(size_t milliseconds) {
+void DiscreteRotationStripPackingTask::setAllowedRunTimeMilliseconds(size_t milliseconds) {
     this->allowedRunTimeMilliseconds = milliseconds;
 }
 
-std::shared_ptr<StripPackingSolution> FixedRotationStripPackingTask::getResult() const {
+std::shared_ptr<StripPackingSolution> DiscreteRotationStripPackingTask::getResult() const {
     return result;
 }
-

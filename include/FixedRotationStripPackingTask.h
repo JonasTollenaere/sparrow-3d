@@ -17,7 +17,7 @@ class FixedRotationStripPackingTask final : public AbstractTask {
 
     float overlap_proxy_decay(const std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t itemIndexA, size_t itemIndexB);
 
-    // Should return a metric that quantifies how bas the collision is, i.e., how much the items overlap.
+    // Returns a metric that quantifies how bas the collision is, i.e., how much the items overlap.
     float quantify_collision(const std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t itemIndexA, size_t itemIndexB);
 
     AABB getValidTranslationRange(const std::shared_ptr<EnhancedStripPackingSolution>& solution, float containerHeight, size_t itemIndex);
@@ -53,19 +53,16 @@ class FixedRotationStripPackingTask final : public AbstractTask {
 
     std::map<std::pair<size_t, size_t>, float> init_weights(const EnhancedStripPackingSolution& solution);
 
-    const std::shared_ptr<StripPackingProblem> problem;
 
 private:
     int seed = 0;
 
-    float targetHeight = 0.0f;
-
     size_t allowedRunTimeMilliseconds = 60 * 60 * 1000; // 1 hour
-    size_t TargetReachedMilliseconds = 0;
-    std::shared_ptr<StripPackingSolution> result;
-
     long long startMilliseconds = 0;
     long long elapsedMilliseconds = 0;
+
+    const std::shared_ptr<StripPackingProblem> problem;
+    std::shared_ptr<StripPackingSolution> result;
 
 public:
     explicit FixedRotationStripPackingTask(const std::shared_ptr<StripPackingProblem>& problem);

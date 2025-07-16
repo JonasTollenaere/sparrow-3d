@@ -38,3 +38,9 @@ target_link_libraries(StripPacking_Discrete_Rotation PUBLIC MeshCore)
 
 add_executable(Benchmark_Fixed_Rotation Benchmark_Fixed_Rotation.cpp ${SOURCES})
 target_link_libraries(Benchmark_Fixed_Rotation PUBLIC MeshCore)
+
+add_executable(Benchmark_Discrete_Rotation Benchmark_Discrete_Rotation.cpp ${SOURCES})
+target_link_libraries(Benchmark_Discrete_Rotation PUBLIC MeshCore)
+
+add_executable(RenderPolesOfInaccessibility RenderPolesOfInaccessibility.cpp ${SOURCES})
+target_link_libraries(RenderPolesOfInaccessibility PUBLIC MeshCore)

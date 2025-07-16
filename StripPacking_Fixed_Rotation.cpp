@@ -11,7 +11,7 @@
 
 int main(int argc, char *argv[]){
 
-    FixedRotationStripPackingTask task(StripPackingProblem::fromInstancePath(LAMAS_FERNANDEZ_2022_CHESS, ObjectOrigin::AlignToMinimum));
+    FixedRotationStripPackingTask task(StripPackingProblem::fromInstancePath(STOYAN_2004_EXAMPLE_4, ObjectOrigin::AlignToMinimum));
 
     QApplication app(argc, argv);
     ApplicationWindow window;
