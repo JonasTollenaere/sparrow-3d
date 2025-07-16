@@ -56,6 +56,8 @@ Sphere InaccessibilityPoles::findNextPoleOfInaccessibility(const std::shared_ptr
     auto& modelAABB = mesh->getBounds();
     auto squareAABB = AABB(modelAABB.getMinimum(), modelAABB.getMinimum() + glm::compMax(modelAABB.getMaximum() - modelAABB.getMinimum()));
 
+    auto epsilon = 1e-2f * glm::length(modelAABB.getHalf());
+
     // 2. Create a priority queue and add the first
     auto comparator = [](const std::pair<double, AABB>& a, const std::pair<double, AABB>& b) {
         return a.first < b.first; // Compare based on the double value
@@ -76,7 +78,7 @@ Sphere InaccessibilityPoles::findNextPoleOfInaccessibility(const std::shared_ptr
         auto [maxPotentialDistance, aabb] = queue.top();
         queue.pop();
 
-        if (maxPotentialDistance < bestDistance) {
+        if (maxPotentialDistance < bestDistance + epsilon) {
             break; // Points within this AABB cannot improve the best distance, and neither will the rest of the priority queue
         }
 
@@ -87,11 +89,11 @@ Sphere InaccessibilityPoles::findNextPoleOfInaccessibility(const std::shared_ptr
 
         auto addToQueue = [&](const AABB& child) {
 
-            if(glm::length(child.getHalf()) < 1e-3f * glm::length(modelAABB.getHalf())){
+            if(glm::length(child.getHalf()) < epsilon){
                 return;
             }
 
-            auto minimumChildDistance = bestDistance - glm::length(child.getHalf()); // If lower, we're not interested
+            auto minimumChildDistance = bestDistance - glm::length(child.getHalf()) + epsilon; // If lower, we're not interested in this node
 
             auto childDistance = computeSignedDistanceToMeshAndPoles(tree, child.getCenter(), previousPoles, minimumChildDistance);
 
@@ -104,7 +106,7 @@ Sphere InaccessibilityPoles::findNextPoleOfInaccessibility(const std::shared_ptr
 
             auto maxPotentialChildDistance = childDistance + glm::length(child.getHalf());
 
-            if(maxPotentialChildDistance < std::max(0.0f, bestDistance + 1e-3f)){
+            if(maxPotentialChildDistance < std::max(0.0f, bestDistance + epsilon)){
                 return; // Don't add this AABB the queue, the best distance can't be improved in its region
             }
             assert(maxPotentialChildDistance>0.0f);

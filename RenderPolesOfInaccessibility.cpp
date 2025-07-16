@@ -26,8 +26,10 @@ void run(RenderWidget* renderWidget){
     std::cout << "Hello, World!" << std::endl;
 
     auto start = std::chrono::high_resolution_clock::now();
-    auto mesh = FileParser::loadMeshFile(MESHCORE_DATA_DIR + std::string("Liu et al. 2015/ring.obj"));
-    //auto mesh = FileParser::loadMeshFile(MESHCORE_DATA_DIR + std::string("Lamas-Fernandez, C. et al. 2022/Engine/Header.stl"));
+    //auto mesh = FileParser::loadMeshFile(MESHCORE_DATA_DIR + std::string("Liu et al. 2015/ring.obj"));
+    //auto mesh = FileParser::loadMeshFile(MESHCORE_DATA_DIR + std::string("Stoyan et al. 2004/nonconvex/sanitized/polytope1.obj"));
+    auto mesh = FileParser::loadMeshFile(MESHCORE_DATA_DIR + std::string("Lamas-Fernandez, C. et al. 2022/Engine/Header.stl"));
+    //auto mesh = FileParser::loadMeshFile(MESHCORE_DATA_DIR + std::string("Lamas-Fernandez, C. et al. 2022/Chess/classic_bishop.stl"));
     auto end = std::chrono::high_resolution_clock::now();
     std::cout << "Loading took: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
 
@@ -37,7 +39,7 @@ void run(RenderWidget* renderWidget){
         temp.getModelTransformation().deltaPosition(-mesh->getBounds().getCenter());
         mesh = temp.getTransformedModelSpaceMesh();
     }
-    renderWidget->renderWorldSpaceMesh("Original", std::make_shared<WorldSpaceMesh>(mesh), Color::Brown());
+    renderWidget->renderWorldSpaceMesh("Original", std::make_shared<WorldSpaceMesh>(mesh), Color::Brown(0.6));
 
     start = std::chrono::high_resolution_clock::now();
     const auto wrappedMesh = AlphaWrapper::getAlphaWrapping(mesh);
@@ -45,11 +47,6 @@ void run(RenderWidget* renderWidget){
     std::cout << "Wrapping took: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
     if (wrappedMesh->getTriangles().size() < mesh->getTriangles().size()) mesh = wrappedMesh;
     renderWidget->renderWorldSpaceMesh("Wrapped", std::make_shared<WorldSpaceMesh>(mesh), Color::White(0.5));
-
-    for (auto i = 0; i<poles3.size(); i++){
-        auto& pole = poles3[i];
-        renderWidget->renderSphere("Poles3", "Pole " + std::to_string(i), pole, Color::Green());
-    }
 
     start = std::chrono::high_resolution_clock::now();
     auto poles = InaccessibilityPoles::computePolesOfInaccessibility(mesh, 25);
