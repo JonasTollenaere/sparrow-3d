@@ -512,10 +512,8 @@ bool FixedRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPackin
     return false;
 }
 
-std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::explore(
-    std::shared_ptr<EnhancedStripPackingSolution> &solution, float initialHeight, float minimumHeight) {
+std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::explore(std::shared_ptr<EnhancedStripPackingSolution> &solution, float initialHeight, float minimumHeight, Random& random) {
 
-    Random random(seed);
     auto bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone());
     startMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
@@ -621,7 +619,7 @@ void FixedRotationStripPackingTask::run() {
     auto bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone());
 
     // Create a random overlapping solution, half the trivial height
-    Random random(0);
+    Random random(seed);
     notifyObserversStatus("Creating random overlapping solution");
     for (int itemIndex = 0; itemIndex < solution->getNumberOfItems(); ++itemIndex) {
         auto& item = solution->getItem(itemIndex);
@@ -634,7 +632,7 @@ void FixedRotationStripPackingTask::run() {
     notifyObserversSolution(solution);
 
     notifyObserversStatus("Starting exploration");
-    bestSolution = explore(solution, currentHeight, minimumHeight);
+    bestSolution = explore(solution, currentHeight, minimumHeight, random);
 
     notifyObserversSolution(bestSolution);
     result = bestSolution;
