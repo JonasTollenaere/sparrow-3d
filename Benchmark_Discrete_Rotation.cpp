@@ -2,34 +2,44 @@
 // Created by Jonas Tollenaere on 05/07/2025.
 //
 
-#include "FixedRotationStripPackingTask.h"
+#include "DiscreteRotationStripPackingTask.h"
 
 #include <fstream>
+#include <fmt/core.h>
 
 #include <meshcore/rendering/ApplicationWindow.h>
 #include <meshcore/optimization/StripPackingProblem.h>
 #include <../datasets/StripPackingInstances.h>
 
 #include "BenchmarkObserver.h"
-#include "DiscreteRotationStripPackingTask.h"
 #include "InaccessibilityPoles.h"
 
 void run(RenderWidget* renderWidget) {
 
-    std::vector<std::pair<std::string, float>> instances;
+    std::vector<std::tuple<std::string, float, size_t>> instances;
 
     // Liu with fixed rotation instances and best reported heights
-    instances.emplace_back(LIU_2015_EXAMPLE_1, 34.13);
+    instances.emplace_back(LIU_2015_EXAMPLE_1, 34.13, 8);
 
-    for (int seed = 0; seed < 15; ++seed) {
-        for (const auto& [instance, bestReportedHeight] : instances) {
+    // Stoyan 2004 instances with the rotation angles benchmarked in Liu et al. 2015
+    instances.emplace_back(STOYAN_2004_EXAMPLE_5, 73.6, 4);
+    instances.emplace_back(STOYAN_2004_EXAMPLE_4, 59, 4);
+    instances.emplace_back(STOYAN_2004_EXAMPLE_3, 46, 4);
+    instances.emplace_back(STOYAN_2004_EXAMPLE_2, 31, 4);
 
+    instances.emplace_back(STOYAN_2004_EXAMPLE_5, 80.1, 2);
+    instances.emplace_back(STOYAN_2004_EXAMPLE_4, 65, 2);
+    instances.emplace_back(STOYAN_2004_EXAMPLE_3, 48, 2);
+    instances.emplace_back(STOYAN_2004_EXAMPLE_2, 34, 2);
+
+    for (const auto& [instance, bestReportedHeight, nRotationAngles] : instances) {
+        for (int seed = 0; seed < 15; ++seed) {
             renderWidget->clear();
 
-            DiscreteRotationStripPackingTask task(StripPackingProblem::fromInstancePath(instance, ObjectOrigin::AlignToMinimum));
+            DiscreteRotationStripPackingTask task(StripPackingProblem::fromInstancePath(instance, ObjectOrigin::AlignToMinimum), nRotationAngles);
 
             task.setSeed(seed);
-            task.setAllowedRunTimeMilliseconds(10 * 60 * 1000);
+            task.setAllowedRunTimeMilliseconds(11 * 60 * 1000);
 
             StripPackingBenchmarkObserver observer(bestReportedHeight);
             task.registerObserver(&observer);
@@ -41,7 +51,7 @@ void run(RenderWidget* renderWidget) {
             // Export the best solution
             auto result = task.getResult();
             auto solutionJSON = result->toJson();
-            std::ofstream jsonOutputFile(std::string(SOLUTION_DIR) + "benchmark/" + result->getProblem()->getName() + "_Discrete_" + std::to_string(result->computeTotalHeight()) + ".json");
+            std::ofstream jsonOutputFile(std::string(SOLUTION_DIR) + "benchmark/" + result->getProblem()->getName() + "_Discrete_RN" + std::to_string(nRotationAngles) + "_" + std::to_string(seed) + "_" + std::to_string(result->computeTotalHeight()) + ".json");
             jsonOutputFile << solutionJSON.dump(4);
             jsonOutputFile.close();
 
@@ -50,21 +60,30 @@ void run(RenderWidget* renderWidget) {
             bool csvFileExists = std::ifstream(csvFilePath).good();
             std::ofstream csvFile(csvFilePath, std::ios::app);
             if (!csvFileExists) {
-                csvFile << "Instance,Seed,Best height 05 minutes,"
-                        << "Best height 10 minutes,Best height 20 minutes,"
-                        << "Best height 30 minutes,Best height 60 minutes,"
-                        << "Best height,Target height, Target height (ms)\n";
+                csvFile << "Instance;nRotations;Seed;Best height 05 minutes;"
+                        << "Best height 10 minutes;Best height 20 minutes;"
+                        << "Best height 30 minutes;Best height 60 minutes;"
+                        << "Best height;Target height; Target height (ms)\n";
             }
-            csvFile << instance << "," << seed << ","
-                    << observer.getBestHeight05Minutes() << ","
-                    << observer.getBestHeight10Minutes() << ","
-                    << observer.getBestHeight20Minutes() << ","
-                    << observer.getBestHeight30Minutes() << ","
-                    << observer.getBestHeight60Minutes() << ","
-                    << observer.getBestHeight() << ","
-                    << observer.getTargetHeight() << ","
-                    << observer.getTargetHeightMilliseconds() << "\n";
 
+            auto format_number = [](double value) {
+                std::string s = fmt::format("{:.2f}", value);
+                std::replace(s.begin(), s.end(), '.', ',');
+                return s;
+            };
+            csvFile << fmt::format("{};{};{};{};{};{};{};{};{};{};{}\n",
+                instance,
+                nRotationAngles,
+                seed,
+                format_number(observer.getBestHeight05Minutes()),
+                format_number(observer.getBestHeight10Minutes()),
+                format_number(observer.getBestHeight20Minutes()),
+                format_number(observer.getBestHeight30Minutes()),
+                format_number(observer.getBestHeight60Minutes()),
+                format_number(observer.getBestHeight()),
+                format_number(observer.getTargetHeight()),
+                observer.getTargetHeightMilliseconds()
+            );
             csvFile.close();
         }
     }

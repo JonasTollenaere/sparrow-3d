@@ -107,7 +107,7 @@ std::optional<AABB> DiscreteRotationStripPackingTask::getValidTranslationRange(
     auto min = containerMinimum - aabb.getMinimum();
     auto max = containerMaximum - aabb.getMaximum();
 
-    if (!glm::all(glm::lessThanEqual(min, max))) {
+    if (!glm::all(glm::lessThanEqual(min, max + 1e-6f))) {
         return std::nullopt;
     }
 
@@ -115,7 +115,7 @@ std::optional<AABB> DiscreteRotationStripPackingTask::getValidTranslationRange(
     min += item->getModelTransformation().getPosition();
     max += item->getModelTransformation().getPosition();
 
-    return AABB{min, max};
+    return AABB{min, glm::max(min,max)};
 }
 
 std::vector<bool> DiscreteRotationStripPackingTask::getCollidingItems(
@@ -161,7 +161,7 @@ float DiscreteRotationStripPackingTask::sample_angle(const Random &random, size_
 
 Quaternion DiscreteRotationStripPackingTask::sample_rotation(const Random &random) {
     const auto angleIndex = random.nextInteger(0, 2);
-    const auto randomAngle = sample_angle(random, 8);
+    const auto randomAngle = sample_angle(random, nRotationAngles);
     auto YPR = glm::vec3(0.0f, 0.0f, 0.0f);
     YPR[angleIndex] = randomAngle;
     return Quaternion(YPR.x, YPR.y, YPR.z);
@@ -581,12 +581,12 @@ bool DiscreteRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPac
             if (true) {
                 move_colliding_items(currentSolution, currentHeight, metrics, collisionWeights, random);
                 update_collision_metrics(currentSolution, metrics);
-                notifyObserversSolution(currentSolution);
             }
             else {
                 metrics = move_colliding_items_multi(currentSolution, currentHeight, metrics, collisionWeights, random);
-                notifyObserversSolution(currentSolution);
             }
+
+            //notifyObserversSolution(currentSolution);
 
             iterate_weights(collisionWeights, *currentSolution, metrics.collisionQuantities, metrics.collidingItemPairs, metrics.worstCollisionQuantity);
             i++;
@@ -614,7 +614,7 @@ bool DiscreteRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPac
 
             if (metrics.totalCollisionQuantity < bestCollisionQuantity) {
                 std::cout << "Improved total collision quantity to " << metrics.totalCollisionQuantity << std::endl;
-                notifyObserversSolution(bestSolution);
+                //notifyObserversSolution(bestSolution);
                 bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(currentSolution->clone());
                 bestCollisionQuantity = metrics.totalCollisionQuantity;
                 i = 0;
@@ -640,7 +640,7 @@ bool DiscreteRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPac
 }
 
 std::shared_ptr<EnhancedStripPackingSolution> DiscreteRotationStripPackingTask::explore(
-    std::shared_ptr<EnhancedStripPackingSolution> &solution, float initialHeight, float minimumHeight) {
+    std::shared_ptr<EnhancedStripPackingSolution> &solution, float initialHeight, float minimumHeight, const std::vector<Quaternion>& minimumHeightRotations) {
 
     Random random(seed);
     auto bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone());
@@ -670,10 +670,28 @@ std::shared_ptr<EnhancedStripPackingSolution> DiscreteRotationStripPackingTask::
             for (auto itemIndex = 0; itemIndex < solution->getItems().size(); ++itemIndex) {
                 auto& item = solution->getItems()[itemIndex];
                 auto transformation = item->getModelTransformation();
-                auto validTranslationRange = getValidTranslationRange(solution, currentHeight, itemIndex).value();
-                transformation.setPositionZ(glm::clamp(transformation.getPosition().z * REDUCTION_FACTOR, validTranslationRange.getMinimum().z, validTranslationRange.getMaximum().z));
-                solution->setItemTransformation(itemIndex, transformation);
-                assert(problem->getContainer().containsAABB(solution->getItemAABB(itemIndex))); // Ensure items are not below the ground
+
+                auto validTranslationRange = getValidTranslationRange(solution, currentHeight, itemIndex);
+                if (!validTranslationRange.has_value()) {
+
+                    // No valid transformation is found in the container with decreased height when the item has this rotation
+                    // Set the rotation at which the item has minimum height
+                    transformation.setRotation(minimumHeightRotations[itemIndex]);
+                    solution->setItemTransformation(itemIndex, transformation);
+                    validTranslationRange = getValidTranslationRange(solution, currentHeight, itemIndex);
+                    assert(validTranslationRange.has_value());
+
+                    // Place the rotated item at a random position within the valid translation range
+                    auto newPosition = sample_position(validTranslationRange.value(), random);
+                    transformation.setPosition(newPosition);
+                    solution->setItemTransformation(itemIndex, transformation);
+                }
+                else {
+
+                    // Decrease the z-position of the item with REDUCTION_FACTOR as well, keep it clamped within valid translation ranges
+                    transformation.setPositionZ(glm::clamp(transformation.getPosition().z * REDUCTION_FACTOR, validTranslationRange->getMinimum().z, validTranslationRange->getMaximum().z));
+                    solution->setItemTransformation(itemIndex, transformation);
+                }
             }
 
             solutionsPool.clear();
@@ -682,6 +700,9 @@ std::shared_ptr<EnhancedStripPackingSolution> DiscreteRotationStripPackingTask::
             std::cout << "Disrupting solution." << std::endl;
             solutionsPool.push_back(std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone()));
             auto solutionToDisrupt = solutionsPool[random.nextInteger(0, solutionsPool.size() - 1)];
+
+            // Don't modify the solutions in the pool!
+            solutionToDisrupt = std::static_pointer_cast<EnhancedStripPackingSolution>(solutionToDisrupt->clone());
 
             auto itemIndexA = random.nextInteger(0, solutionToDisrupt->getItems().size() - 1);
             auto itemIndexB = random.nextInteger(0, solutionToDisrupt->getItems().size() - 2);
@@ -723,6 +744,7 @@ void DiscreteRotationStripPackingTask::run() {
     // Create a trivial solution
     auto trivialHeight = 0.0f;
     auto minimumHeight = 0.0f;
+    std::vector<Quaternion> minimumHeightRotations;
     {
         notifyObserversStatus("Creating trivial solution");
         auto currentHeight = 0.0f;
@@ -737,8 +759,37 @@ void DiscreteRotationStripPackingTask::run() {
             solution->setItemTransformation(itemIndex, transformation);
             auto itemHeight = itemBounds.getMaximum().z - itemBounds.getMinimum().z;
             currentHeight += itemHeight;
-            minimumHeight = std::max(minimumHeight, itemHeight);
 
+            // Derive minimum item height
+            // We have to account for all possible rotations
+            auto minimumItemHeight = itemHeight;
+            auto minimumItemHeightRotation = item->getModelTransformation().getRotation();
+
+            for (size_t angleIndex = 0; angleIndex < 2; ++angleIndex) {
+                for (size_t step = 0; step < nRotationAngles; ++step) {
+                    // Sample a rotation angle
+                    // We sample the angle in a discrete manner, so we can use it to rotate the item
+                    // around the Z-axis, Y-axis or X-axis
+                    // The angle is sampled uniformly from [0, 2pi]
+                    float angle = 2.0f * glm::pi<float>() * static_cast<float>(step) / static_cast<float>(nRotationAngles);
+                    auto YPR = glm::vec3(0.0f, 0.0f, 0.0f);
+                    YPR[angleIndex] = angle;
+
+                    Quaternion rotation(YPR.x, YPR.y, YPR.z);
+                    auto rotatedItemAABB = AABBFactory::createAABB(item->getModelSpaceMesh()->getVertices(), Transformation(rotation));
+                    auto rotatedItemHeight = rotatedItemAABB.getMaximum().z - rotatedItemAABB.getMinimum().z;
+                    if (rotatedItemHeight < minimumItemHeight) {
+                        minimumItemHeight = rotatedItemHeight;
+                        minimumItemHeightRotation = rotation;
+                    }
+                }
+            }
+
+            // We ensure to never go below this height
+            minimumHeight = std::max(minimumHeight, minimumItemHeight);
+
+            // We keep track of the rotations used to achieve these minimal heights as well, so we can guarantee finding placements later on
+            minimumHeightRotations.push_back(minimumItemHeightRotation);
         }
         notifyObserversSolution(solution);
         trivialHeight = currentHeight;
@@ -746,7 +797,6 @@ void DiscreteRotationStripPackingTask::run() {
     auto currentHeight = 0.5f * trivialHeight;
     currentHeight = std::max(currentHeight, minimumHeight);
     auto bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone());
-    auto bestHeight = trivialHeight;
 
     // Create a random overlapping solution, half the trivial height
     Random random(0);
@@ -762,7 +812,7 @@ void DiscreteRotationStripPackingTask::run() {
     notifyObserversSolution(solution);
 
     notifyObserversStatus("Starting exploration");
-    bestSolution = explore(solution, currentHeight, minimumHeight);
+    bestSolution = explore(solution, currentHeight, minimumHeight, minimumHeightRotations);
 
     notifyObserversSolution(bestSolution);
     result = bestSolution;

@@ -28,7 +28,7 @@ void run(RenderWidget* renderWidget){
     auto start = std::chrono::high_resolution_clock::now();
     //auto mesh = FileParser::loadMeshFile(MESHCORE_DATA_DIR + std::string("Liu et al. 2015/ring.obj"));
     //auto mesh = FileParser::loadMeshFile(MESHCORE_DATA_DIR + std::string("Stoyan et al. 2004/nonconvex/sanitized/polytope1.obj"));
-    auto mesh = FileParser::loadMeshFile(MESHCORE_DATA_DIR + std::string("Lamas-Fernandez, C. et al. 2022/Engine/Header.stl"));
+    auto mesh = FileParser::loadMeshFile(MESHCORE_DATA_DIR + std::string("Lamas-Fernandez, C. et al. 2022/Engine/header.obj"));
     //auto mesh = FileParser::loadMeshFile(MESHCORE_DATA_DIR + std::string("Lamas-Fernandez, C. et al. 2022/Chess/classic_bishop.stl"));
     auto end = std::chrono::high_resolution_clock::now();
     std::cout << "Loading took: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
@@ -39,7 +39,7 @@ void run(RenderWidget* renderWidget){
         temp.getModelTransformation().deltaPosition(-mesh->getBounds().getCenter());
         mesh = temp.getTransformedModelSpaceMesh();
     }
-    renderWidget->renderWorldSpaceMesh("Original", std::make_shared<WorldSpaceMesh>(mesh), Color::Brown(0.6));
+    renderWidget->renderWorldSpaceMesh("Original", std::make_shared<WorldSpaceMesh>(mesh), Color::Locust());
 
     start = std::chrono::high_resolution_clock::now();
     const auto wrappedMesh = AlphaWrapper::getAlphaWrapping(mesh);

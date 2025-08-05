@@ -5,6 +5,7 @@
 #include "FixedRotationStripPackingTask.h"
 
 #include <fstream>
+#include <fmt/core.h>
 
 #include <meshcore/rendering/ApplicationWindow.h>
 #include <meshcore/optimization/StripPackingProblem.h>
@@ -51,7 +52,7 @@ void run(RenderWidget* renderWidget) {
             FixedRotationStripPackingTask task(StripPackingProblem::fromInstancePath(instance, ObjectOrigin::AlignToMinimum));
 
             task.setSeed(seed);
-            task.setAllowedRunTimeMilliseconds(60 * 60 * 1000);
+            task.setAllowedRunTimeMilliseconds(11 * 60 * 1000);
 
             StripPackingBenchmarkObserver observer(bestReportedHeight);
             task.registerObserver(&observer);
@@ -63,7 +64,7 @@ void run(RenderWidget* renderWidget) {
             // Export the best solution
             auto result = task.getResult();
             auto solutionJSON = result->toJson();
-            std::ofstream jsonOutputFile(std::string(SOLUTION_DIR) + "benchmark/" + result->getProblem()->getName() + "_Fixed_" + std::to_string(result->computeTotalHeight()) + ".json");
+            std::ofstream jsonOutputFile(std::string(SOLUTION_DIR) + "benchmark/" + result->getProblem()->getName() + "_Fixed_" + std::to_string(seed) + "_" + std::to_string(result->computeTotalHeight()) + ".json");
             jsonOutputFile << solutionJSON.dump(4);
             jsonOutputFile.close();
 
@@ -72,21 +73,28 @@ void run(RenderWidget* renderWidget) {
             bool csvFileExists = std::ifstream(csvFilePath).good();
             std::ofstream csvFile(csvFilePath, std::ios::app);
             if (!csvFileExists) {
-                csvFile << "Instance,Seed,Best height 05 minutes,"
-                        << "Best height 10 minutes,Best height 20 minutes,"
-                        << "Best height 30 minutes,Best height 60 minutes,"
-                        << "Best height,Target height, Target height (ms)\n";
+                csvFile << "Instance;Seed;Best height 05 minutes;"
+                        << "Best height 10 minutes;Best height 20 minutes;"
+                        << "Best height 30 minutes;Best height 60 minutes;"
+                        << "Best height;Target height; Target height (ms)\n";
             }
-            csvFile << instance << "," << seed << ","
-                    << observer.getBestHeight05Minutes() << ","
-                    << observer.getBestHeight10Minutes() << ","
-                    << observer.getBestHeight20Minutes() << ","
-                    << observer.getBestHeight30Minutes() << ","
-                    << observer.getBestHeight60Minutes() << ","
-                    << observer.getBestHeight() << ","
-                    << observer.getTargetHeight() << ","
-                    << observer.getTargetHeightMilliseconds() << "\n";
-
+            auto format_number = [](double value) {
+                std::string s = fmt::format("{:.2f}", value);
+                std::replace(s.begin(), s.end(), '.', ',');
+                return s;
+            };
+            csvFile << fmt::format("{};{};{};{};{};{};{};{};{};{}\n",
+                instance,
+                seed,
+                format_number(observer.getBestHeight05Minutes()),
+                format_number(observer.getBestHeight10Minutes()),
+                format_number(observer.getBestHeight20Minutes()),
+                format_number(observer.getBestHeight30Minutes()),
+                format_number(observer.getBestHeight60Minutes()),
+                format_number(observer.getBestHeight()),
+                format_number(observer.getTargetHeight()),
+                observer.getTargetHeightMilliseconds()
+            );
             csvFile.close();
         }
     }

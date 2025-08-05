@@ -140,6 +140,7 @@ class DiscreteRotationStripPackingTask final : public AbstractTask {
 
 private:
     int seed = 0;
+    size_t nRotationAngles; // Number of discrete rotation angles around each axis
 
     size_t allowedRunTimeMilliseconds = 60 * 60 * 1000; // 1 hour
     long long startMilliseconds = 0;
@@ -149,11 +150,11 @@ private:
     std::shared_ptr<StripPackingSolution> result;
 
 public:
-    explicit DiscreteRotationStripPackingTask(const std::shared_ptr<StripPackingProblem>& problem): problem(problem) {}
+    explicit DiscreteRotationStripPackingTask(const std::shared_ptr<StripPackingProblem>& problem, size_t nRotationAngles): problem(problem), nRotationAngles(nRotationAngles) {}
 
     bool separate(std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t maxAttempts, size_t maxIterationsWithoutImprovement, float currentHeight, Random& random);
 
-    std::shared_ptr<EnhancedStripPackingSolution> explore(std::shared_ptr<EnhancedStripPackingSolution>& solution, float initialHeight, float minimumHeight);
+    std::shared_ptr<EnhancedStripPackingSolution> explore(std::shared_ptr<EnhancedStripPackingSolution>& solution, float initialHeight, float minimumHeight, const std::vector<Quaternion>& minimumHeightRotations);
 
     void run() override;
 

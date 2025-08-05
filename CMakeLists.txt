@@ -15,6 +15,10 @@ find_package(CGAL REQUIRED)
 link_libraries(CGAL::CGAL)
 include_directories(${CGAL_INCLUDE_DIRS})
 
+### fmt ###
+find_package(fmt REQUIRED)
+link_libraries(fmt::fmt)
+
 ### MeshCore ###
 add_compile_definitions(GLM_ENABLE_EXPERIMENTAL)
 set(MESHCORE_BUILD_DEMOS OFF)
@@ -22,7 +26,7 @@ include(FetchContent)
 set(CMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
 FetchContent_Declare(MeshCore
         GIT_REPOSITORY git@github.com:JonasTollenaere/MeshCore.git
-        GIT_TAG        71cd02892c736843ad8c4c3f7064b5d7adef165f
+        GIT_TAG        02a20450fe59d834eba2ae284d469e01c495f3c2
 )
 FetchContent_MakeAvailable(MeshCore)
 
