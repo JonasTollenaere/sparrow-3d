@@ -56,7 +56,7 @@ void run(RenderWidget* renderWidget) {
             jsonOutputFile.close();
 
             // Check if CSV file exists before opening
-            std::string csvFilePath = std::string(SOLUTION_DIR) + "benchmark/benchmark_results_discrete.csv";
+            std::string csvFilePath = std::string(SOLUTION_DIR) + "benchmark/benchmark_results_Discrete.csv";
             bool csvFileExists = std::ifstream(csvFilePath).good();
             std::ofstream csvFile(csvFilePath, std::ios::app);
             if (!csvFileExists) {

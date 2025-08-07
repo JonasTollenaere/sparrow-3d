@@ -389,8 +389,7 @@ void FixedRotationStripPackingTask::iterate_weights(std::map<std::pair<size_t, s
             assert(collidingItemPairs.find({i, j}) != collidingItemPairs.end());
             if (collidingItemPairs.find({i, j})->second) {
                 auto quantity = collisionQuantities[{i, j}];
-                factor = 1.05f + (1.5f - 1.05f) * quantity/e_max; // a factor in between 1.05 and 1.2
-                assert(factor <= 2.0f && factor >= 1.2f);
+                factor = 1.05f + (1.5f - 1.05f) * quantity/e_max; // a factor in between 1.05 and 1.5
             }
             else {
                 factor = 0.95f;

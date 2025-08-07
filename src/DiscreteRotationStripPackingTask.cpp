@@ -98,8 +98,10 @@ std::optional<AABB> DiscreteRotationStripPackingTask::getValidTranslationRange(
     const std::shared_ptr<EnhancedStripPackingSolution> &solution, float containerHeight, size_t itemIndex) {
     const auto& item = solution->getItem(itemIndex);
 
-    auto containerMinimum = solution->getProblem()->getContainer().getMinimum();
-    auto containerMaximum = solution->getProblem()->getContainer().getMaximum();
+    auto container = solution->getProblem()->getContainer();
+
+    auto containerMinimum = container.getMinimum();
+    auto containerMaximum = container.getMaximum();
     containerMaximum.z = containerHeight;
 
     auto aabb = solution->getItemAABB(itemIndex);
@@ -194,7 +196,7 @@ void DiscreteRotationStripPackingTask::search_position(std::shared_ptr<EnhancedS
 
         Quaternion sampledRotation = sample_rotation(random);
 
-        // Set the item's position to the sampled position
+        // Set the item's rotation to the sampled rotation
         Transformation newTransformation = item->getModelTransformation();
         newTransformation.setRotation(sampledRotation);
         solution->setItemTransformation(itemIndex, newTransformation);
@@ -227,9 +229,9 @@ void DiscreteRotationStripPackingTask::search_position(std::shared_ptr<EnhancedS
         auto modelSpaceCenter = solution->getSimplifiedItem(itemIndex)->getModelSpaceMesh()->getCenter();
         auto initialCenterPosition = initialRotation.rotateVertex(modelSpaceCenter);
         auto newCenterPosition = sampledRotation.rotateVertex(modelSpaceCenter);
-        auto centerShift = newCenterPosition - initialCenterPosition;
+        auto centerShift = newCenterPosition - initialCenterPosition; // How much the center of the item is shifted in going to new rotation
 
-        // Set the item's position to the sampled position
+        // Set the item's rotation to the sampled rotation
         Transformation newTransformation = item->getModelTransformation();
         newTransformation.setRotation(sampledRotation);
         solution->setItemTransformation(itemIndex, newTransformation);
@@ -320,7 +322,7 @@ void DiscreteRotationStripPackingTask::search_position(std::shared_ptr<EnhancedS
         while(stepSize >= 1e-4f && currentEvaluation > 0.0f) {
             bool improved = false;
 
-            glm::dvec3 bestNeighborPosition = currentPosition;
+            glm::vec3 bestNeighborPosition = currentPosition;
             float bestNeighborEvaluation = currentEvaluation;
 
             for (auto step : {glm::vec3(stepSize, 0, 0), glm::vec3(-stepSize, 0, 0),
@@ -521,8 +523,7 @@ void DiscreteRotationStripPackingTask::iterate_weights(std::map<std::pair<size_t
             assert(collidingItemPairs.find({i, j}) != collidingItemPairs.end());
             if (collidingItemPairs.find({i, j})->second) {
                 auto quantity = collisionQuantities[{i, j}];
-                factor = 1.05f + (1.5f - 1.05f) * quantity/e_max; // a factor in between 1.05 and 1.2
-                assert(factor <= 2.0f && factor >= 1.2f);
+                factor = 1.05f + (1.5f - 1.05f) * quantity/e_max; // a factor in between 1.05 and 1.5
             }
             else {
                 factor = 0.95f;
@@ -710,8 +711,8 @@ std::shared_ptr<EnhancedStripPackingSolution> DiscreteRotationStripPackingTask::
 
             auto newPosA = solutionToDisrupt->getItems()[itemIndexB]->getModelTransformation().getPosition();
             auto newPosB = solutionToDisrupt->getItems()[itemIndexA]->getModelTransformation().getPosition();
-            newPosA = getValidTranslationRange(solution, currentHeight, itemIndexA).value().getClosestPoint(newPosA);
-            newPosB = getValidTranslationRange(solution, currentHeight, itemIndexB).value().getClosestPoint(newPosB);
+            newPosA = getValidTranslationRange(solutionToDisrupt, currentHeight, itemIndexA).value().getClosestPoint(newPosA);
+            newPosB = getValidTranslationRange(solutionToDisrupt, currentHeight, itemIndexB).value().getClosestPoint(newPosB);
 
             auto newTransformationA = solutionToDisrupt->getItems()[itemIndexA]->getModelTransformation();
             newTransformationA.setPosition(newPosA);
