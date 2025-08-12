@@ -173,7 +173,7 @@ glm::vec3 DiscreteRotationStripPackingTask::sample_position(const AABB &range, c
     glm::vec3 position;
     position.x = (range.getMinimum().x < range.getMaximum().x) ? random.nextFloat(range.getMinimum().x, range.getMaximum().x) : range.getMinimum().x;
     position.y = (range.getMinimum().y < range.getMaximum().y) ? random.nextFloat(range.getMinimum().y, range.getMaximum().y) : range.getMinimum().y;
-    position.z = random.nextFloat(range.getMinimum().z, range.getMaximum().z);
+    position.z = (range.getMinimum().z < range.getMaximum().z) ? random.nextFloat(range.getMinimum().z, range.getMaximum().z) : range.getMinimum().z;
     return position;
 }
 
