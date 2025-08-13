@@ -18,7 +18,7 @@ void run(RenderWidget* renderWidget) {
 
     std::vector<std::tuple<std::string, float, size_t>> instances;
 
-    // Liu with fixed rotation instances and best reported heights
+    // Liu instances
     instances.emplace_back(LIU_2015_EXAMPLE_1, 34.13, 8);
 
     // Stoyan 2004 instances with the rotation angles benchmarked in Liu et al. 2015
@@ -31,6 +31,18 @@ void run(RenderWidget* renderWidget) {
     instances.emplace_back(STOYAN_2004_EXAMPLE_4, 65, 2);
     instances.emplace_back(STOYAN_2004_EXAMPLE_3, 48, 2);
     instances.emplace_back(STOYAN_2004_EXAMPLE_2, 34, 2);
+
+    // Egeblad 2009
+    instances.emplace_back(EGEBLAD_2009_MERGED_1,16,4);
+    instances.emplace_back(EGEBLAD_2009_MERGED_2,19.81,4);
+    instances.emplace_back(EGEBLAD_2009_MERGED_3,25.19,4);
+    instances.emplace_back(EGEBLAD_2009_MERGED_4,30.41,4);
+    instances.emplace_back(EGEBLAD_2009_MERGED_5,38.31,4);
+
+    // Stoyan 2005 instances, benchmarked by Egeblad et al. 2009
+    instances.emplace_back(STOYAN_2005_EXAMPLE_1, 16,4);
+    instances.emplace_back(STOYAN_2005_EXAMPLE_2, 16,4);
+    instances.emplace_back(STOYAN_2005_EXAMPLE_3, 24.91,4);
 
     for (const auto& [instance, bestReportedHeight, nRotationAngles] : instances) {
         for (int seed = 0; seed < 15; ++seed) {

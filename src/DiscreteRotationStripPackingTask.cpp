@@ -758,13 +758,15 @@ void DiscreteRotationStripPackingTask::run() {
             transformation.setPositionY(-itemBounds.getMinimum().y);
             transformation.setPositionZ(currentHeight);
             solution->setItemTransformation(itemIndex, transformation);
-            auto itemHeight = itemBounds.getMaximum().z - itemBounds.getMinimum().z;
-            currentHeight += itemHeight;
+            auto itemSize = itemBounds.getMaximum() - itemBounds.getMinimum();
+            currentHeight += itemSize.z;
 
             // Derive minimum item height
             // We have to account for all possible rotations
-            auto minimumItemHeight = itemHeight;
+            auto minimumItemHeight = itemSize.z;
             auto minimumItemHeightRotation = item->getModelTransformation().getRotation();
+            auto containerSize = problem->getContainer().getMaximum() - problem->getContainer().getMinimum();
+            assert(containerSize.x >= itemSize.x && containerSize.y >= itemSize.y);
 
             for (size_t angleIndex = 0; angleIndex < 2; ++angleIndex) {
                 for (size_t step = 0; step < nRotationAngles; ++step) {
@@ -778,9 +780,11 @@ void DiscreteRotationStripPackingTask::run() {
 
                     Quaternion rotation(YPR.x, YPR.y, YPR.z);
                     auto rotatedItemAABB = AABBFactory::createAABB(item->getModelSpaceMesh()->getVertices(), Transformation(rotation));
-                    auto rotatedItemHeight = rotatedItemAABB.getMaximum().z - rotatedItemAABB.getMinimum().z;
-                    if (rotatedItemHeight < minimumItemHeight) {
-                        minimumItemHeight = rotatedItemHeight;
+                    auto rotatedItemSize = rotatedItemAABB.getMaximum()-rotatedItemAABB.getMinimum();
+
+                    // Test if this improves the minimum height and if the item fits in the container under this rotation
+                    if (rotatedItemSize.z < minimumItemHeight && containerSize.x >= rotatedItemSize.x && containerSize.y >= rotatedItemSize.y) {
+                        minimumItemHeight = rotatedItemSize.z;
                         minimumItemHeightRotation = rotation;
                     }
                 }
