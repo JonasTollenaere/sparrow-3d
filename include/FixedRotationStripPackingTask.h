@@ -5,24 +5,55 @@
 #ifndef FIXEDROTATIONSTRIPPACKINGTASK_H
 #define FIXEDROTATIONSTRIPPACKINGTASK_H
 
-#include <meshcore/tasks/AbstractTask.h>
 #include "EnhancedStripPackingSolution.h"
+#include "SparrowOptions.h"
+
+#include <meshcore/tasks/AbstractTask.h>
 #include <meshcore/utility/Random.h>
 
 class FixedRotationStripPackingTask final : public AbstractTask {
 
-    bool collide(const std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t itemIndexA, size_t itemIndexB);
+    /**
+     * Checks if two items in a solution collide.
+     * @param solution The solution containing the items.
+     * @param itemIndexA Index of the first item.
+     * @param itemIndexB Index of the second item.
+     * @return True if the items collide, false otherwise.
+     */
+    static bool collide(const std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t itemIndexA, size_t itemIndexB);
 
-    float overlap_proxy(const std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t itemIndexA, size_t itemIndexB);
+    /**
+     * Computes an approximate metric for the overlap between two items in a solution,
+     * based on the overlap of their poles of inaccessibility.
+     * @param solution The solution containing the items.
+     * @param itemIndexA Index of the first item.
+     * @param itemIndexB Index of the second item.
+     * @return A float representing the value of the overlap metric.
+     */
+    static float overlap_proxy(const std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t itemIndexA, size_t itemIndexB);
 
-    float overlap_proxy_decay(const std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t itemIndexA, size_t itemIndexB);
+    /**
+     * Computes an improved approximation metric for the overlap between two items in a solution,
+     * which also produces non-zero values when their poles of inaccessibility do not intersect.
+     * @param solution The solution containing the items.
+     * @param itemIndexA Index of the first item.
+     * @param itemIndexB Index of the second item.
+     * @return A float representing the value of the improved overlap metric.
+     */
+    static float overlap_proxy_decay(const std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t itemIndexA, size_t itemIndexB);
 
-    // Returns a metric that quantifies how bas the collision is, i.e., how much the items overlap.
-    float quantify_collision(const std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t itemIndexA, size_t itemIndexB);
+    /**
+     * Returns a metric that quantifies how bas the collision is, i.e., how much the items overlap.
+     * @param solution
+     * @param itemIndexA
+     * @param itemIndexB
+     * @return
+     */
+    static float quantify_collision(const std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t itemIndexA, size_t itemIndexB);
 
-    AABB getValidTranslationRange(const std::shared_ptr<EnhancedStripPackingSolution>& solution, float containerHeight, size_t itemIndex);
+    static AABB getValidTranslationRange(const std::shared_ptr<EnhancedStripPackingSolution>& solution, float containerHeight, size_t itemIndex);
 
-    std::vector<bool> getCollidingItems(const std::shared_ptr<EnhancedStripPackingSolution>& solution);
+    static std::vector<bool> getCollidingItems(const std::shared_ptr<EnhancedStripPackingSolution>& solution);
 
     float evaluate_item_sample(const std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t itemIndex, const std::map<std::pair<size_t, size_t>, float> & collisionWeights);
 
@@ -53,11 +84,8 @@ class FixedRotationStripPackingTask final : public AbstractTask {
 
     std::map<std::pair<size_t, size_t>, float> init_weights(const EnhancedStripPackingSolution& solution);
 
+    SparrowOptions options;
 
-private:
-    int seed = 0;
-
-    size_t allowedRunTimeMilliseconds = 60 * 60 * 1000; // 1 hour
     long long startMilliseconds = 0;
     long long elapsedMilliseconds = 0;
 
@@ -65,19 +93,14 @@ private:
     std::shared_ptr<StripPackingSolution> result;
 
 public:
-    explicit FixedRotationStripPackingTask(const std::shared_ptr<StripPackingProblem>& problem);
+    FixedRotationStripPackingTask(const std::shared_ptr<StripPackingProblem>& problem, const SparrowOptions& options = SparrowOptions());
 
-    FixedRotationStripPackingTask(const std::shared_ptr<StripPackingProblem>& problem, int seed);
+    bool separate(std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t maxAttempts, size_t maxIterationsWithoutImprovement, float currentHeight, long long allowedRunTimeMilliseconds, const Random& random);
 
-    bool separate(std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t maxAttempts, size_t maxIterationsWithoutImprovement, float currentHeight, Random& random);
-
-    std::shared_ptr<EnhancedStripPackingSolution> explore(std::shared_ptr<EnhancedStripPackingSolution>& solution, float initialHeight, float minimumHeight, Random& random);
+    std::shared_ptr<EnhancedStripPackingSolution> explore(std::shared_ptr<EnhancedStripPackingSolution>& solution, float initialHeight, float minimumHeight,const Random& random);
+    std::shared_ptr<EnhancedStripPackingSolution> compress(std::shared_ptr<EnhancedStripPackingSolution>& solution, float initialHeight, float minimumHeight, const Random& random);
 
     void run() override;
-
-    void setSeed(int seed);
-
-    void setAllowedRunTimeMilliseconds(size_t milliseconds);
 
     std::shared_ptr<StripPackingSolution> getResult() const;
 };

@@ -26,7 +26,7 @@ include(FetchContent)
 set(CMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
 FetchContent_Declare(MeshCore
         GIT_REPOSITORY https://github.com/JonasTollenaere/MeshCore.git
-        GIT_TAG        f63831dfeb9491364c5af035d3ee1dd04896af6b
+        GIT_TAG        477b208e43d66b7bdb711dff3c0d50353033f16c
 )
 FetchContent_MakeAvailable(MeshCore)
 

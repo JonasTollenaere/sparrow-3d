@@ -48,10 +48,10 @@ void run(RenderWidget* renderWidget) {
         for (int seed = 0; seed < 15; ++seed) {
             renderWidget->clear();
 
-            DiscreteRotationStripPackingTask task(StripPackingProblem::fromInstancePath(instance, ObjectOrigin::AlignToMinimum), nRotationAngles);
+            SparrowOptions options;
+            options.seed = seed;
 
-            task.setSeed(seed);
-            task.setAllowedRunTimeMilliseconds(11 * 60 * 1000);
+            DiscreteRotationStripPackingTask task(StripPackingProblem::fromInstancePath(instance, ObjectOrigin::AlignToMinimum), nRotationAngles, options);
 
             StripPackingBenchmarkObserver observer(bestReportedHeight);
             task.registerObserver(&observer);
@@ -63,12 +63,12 @@ void run(RenderWidget* renderWidget) {
             // Export the best solution
             auto result = task.getResult();
             auto solutionJSON = result->toJson();
-            std::ofstream jsonOutputFile(std::string(SOLUTION_DIR) + "benchmark/" + result->getProblem()->getName() + "_Discrete_RN" + std::to_string(nRotationAngles) + "_" + std::to_string(seed) + "_" + std::to_string(result->computeTotalHeight()) + ".json");
+            std::ofstream jsonOutputFile(std::string(SOLUTION_DIR) + "discrete/" + result->getProblem()->getName() + "_Discrete_RN" + std::to_string(nRotationAngles) + "_" + std::to_string(seed) + "_" + std::to_string(result->computeTotalHeight()) + ".json");
             jsonOutputFile << solutionJSON.dump(4);
             jsonOutputFile.close();
 
             // Check if CSV file exists before opening
-            std::string csvFilePath = std::string(SOLUTION_DIR) + "benchmark/benchmark_results_Discrete.csv";
+            std::string csvFilePath = std::string(SOLUTION_DIR) + "discrete/benchmark_results_Discrete.csv";
             bool csvFileExists = std::ifstream(csvFilePath).good();
             std::ofstream csvFile(csvFilePath, std::ios::app);
             if (!csvFileExists) {

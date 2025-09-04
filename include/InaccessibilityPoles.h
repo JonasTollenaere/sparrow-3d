@@ -15,7 +15,6 @@
 class InaccessibilityPoles{
 public:
     static Sphere findNextPoleOfInaccessibility(const std::shared_ptr<ModelSpaceMesh> & mesh, const std::vector<Sphere> & poles, const std::shared_ptr<BoundingVolumeHierarchy> &tree);
-    static Sphere findNextPoleOfInaccessibility2(const std::shared_ptr<ModelSpaceMesh> & mesh, const std::vector<Sphere> & poles, const std::shared_ptr<BoundingVolumeHierarchy> &tree);
     static std::vector<Sphere> computePolesOfInaccessibility(const std::shared_ptr<ModelSpaceMesh> &mesh, size_t numberOfPoles);
 };
 

@@ -2,8 +2,10 @@
 // Created by Jonas Tollenaere on 05/07/2025.
 //
 
+#include "InaccessibilityPoles.h"
 #include "FixedRotationStripPackingTask.h"
 
+#include <tbb/parallel_for.h>
 #include <fstream>
 
 #include <meshcore/acceleration/CachingBoundsTreeFactory.h>
@@ -11,7 +13,10 @@
 #include <meshcore/geometric/Intersection.h>
 #include <meshcore/optimization/StripPackingProblem.h>
 
-#include "InaccessibilityPoles.h"
+
+#define N_WORKERS_MAX 16
+
+FixedRotationStripPackingTask::FixedRotationStripPackingTask(const std::shared_ptr<StripPackingProblem> &problem, const SparrowOptions& options): problem(problem), options(options) {}
 
 bool FixedRotationStripPackingTask::collide(const std::shared_ptr<EnhancedStripPackingSolution> &solution,
                                             size_t itemIndexA, size_t itemIndexB) {
@@ -330,44 +335,35 @@ FixedRotationStripPackingTask::CollisionMetrics FixedRotationStripPackingTask::m
     const std::map<std::pair<size_t, size_t>, float> &collisionWeights, const Random &random) {
 
     // Iterate over items in multiple random orders and take the best result
-    constexpr size_t N_WORKERS = 4;
-    int seeds[N_WORKERS];
-    std::shared_ptr<EnhancedStripPackingSolution> workerSolutions[N_WORKERS];
-    CollisionMetrics workerMetrics[N_WORKERS];
-    float newTotalCollisionQuantities[N_WORKERS];
-    for (size_t i = 0; i < N_WORKERS; ++i) {
+    int seeds[N_WORKERS_MAX];
+    std::shared_ptr<EnhancedStripPackingSolution> workerSolutions[N_WORKERS_MAX];
+    CollisionMetrics workerMetrics[N_WORKERS_MAX];
+    float newTotalCollisionQuantities[N_WORKERS_MAX];
+    for (size_t i = 0; i < std::min(options.nWorkers, N_WORKERS_MAX); ++i) {
         seeds[i] = random.nextInteger();
         workerSolutions[i] = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone());
         workerMetrics[i] = metrics;
     }
 
-    for (size_t i = 0; i < N_WORKERS; ++i) {
-        //tbb::parallel_for<size_t>(0, N_WORKERS, [&workerSolutions, &seeds, &workerMetrics, &newTotalCollisionQuantities, &currentHeight, &collisionWeights](const size_t i) {
-
+    tbb::parallel_for(0, std::min(options.nWorkers, N_WORKERS_MAX), [&](int i) {
         auto& workerSolution = workerSolutions[i];
-
-        const Random random(seeds[i]);
-
+        const Random iRandom(seeds[i]);
         std::vector<size_t> itemIndices(workerSolution->getNumberOfItems());
         std::iota(itemIndices.begin(), itemIndices.end(), 0);
-        std::shuffle(itemIndices.begin(), itemIndices.end(), boost::random::mt19937(random.nextInteger()));
+        std::shuffle(itemIndices.begin(), itemIndices.end(), boost::random::mt19937(iRandom.nextInteger()));
         for (const auto& itemIndex : itemIndices) {
-
             // Skip item if not colliding
             if (!workerMetrics[i].collidingItems[itemIndex]) continue;
-
             // Search for a better position for this item
-            search_position(workerSolution, currentHeight, itemIndex, random, collisionWeights);
+            search_position(workerSolution, currentHeight, itemIndex, iRandom, collisionWeights);
         }
-
         update_collision_metrics(workerSolution, workerMetrics[i]);
         newTotalCollisionQuantities[i] = workerMetrics[i].totalCollisionQuantity;
-        //});
-    }
+    });
 
     // Find the index with the minimum total collision quantity
     size_t bestIndex = 0;
-    for (size_t i = 1; i < N_WORKERS; ++i) {
+    for (size_t i = 1; i < std::min(options.nWorkers, N_WORKERS_MAX); ++i) {
         if (newTotalCollisionQuantities[i] < newTotalCollisionQuantities[bestIndex]) {
             bestIndex = i;
         }
@@ -389,10 +385,10 @@ void FixedRotationStripPackingTask::iterate_weights(std::map<std::pair<size_t, s
             assert(collidingItemPairs.find({i, j}) != collidingItemPairs.end());
             if (collidingItemPairs.find({i, j})->second) {
                 auto quantity = collisionQuantities[{i, j}];
-                factor = 1.05f + (1.5f - 1.05f) * quantity/e_max; // a factor in between 1.05 and 1.5
+                factor = options.weightMultiplierLower + (options.weightMultiplierUpper - options.weightMultiplierLower) * quantity/e_max; // a factor in between 1.05 and 1.5
             }
             else {
-                factor = 0.95f;
+                factor = options.weightMultiplierDecay;
             }
 
             auto originalWeight = collisionWeights[{i, j}];
@@ -419,13 +415,8 @@ std::map<std::pair<size_t, size_t>, float> FixedRotationStripPackingTask::init_w
     return collisionWeights;
 }
 
-FixedRotationStripPackingTask::FixedRotationStripPackingTask(const std::shared_ptr<StripPackingProblem> &problem): problem(problem) {}
-
-FixedRotationStripPackingTask::FixedRotationStripPackingTask(const std::shared_ptr<StripPackingProblem> &problem,
-    int seed): problem(problem), seed(seed) {}
-
 bool FixedRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPackingSolution> &solution,
-    size_t maxAttempts, size_t maxIterationsWithoutImprovement, float currentHeight, Random &random) {
+    size_t maxAttempts, size_t maxIterationsWithoutImprovement, float currentHeight, long long allowedRunTimeMilliseconds, const Random &random) {
 
     auto n = 0; // Strike counter
 
@@ -450,15 +441,7 @@ bool FixedRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPackin
         auto i = 0;
         while (i<maxIterationsWithoutImprovement && !stopCalled) {
 
-            if (true) {
-                move_colliding_items(currentSolution, currentHeight, metrics, collisionWeights, random);
-                update_collision_metrics(currentSolution, metrics);
-            }
-            else {
-                metrics = move_colliding_items_multi(currentSolution, currentHeight, metrics, collisionWeights, random);
-            }
-
-            //notifyObserversSolution(currentSolution);
+            metrics = move_colliding_items_multi(currentSolution, currentHeight, metrics, collisionWeights, random);
 
             iterate_weights(collisionWeights, *currentSolution, metrics.collisionQuantities, metrics.collidingItemPairs, metrics.worstCollisionQuantity);
             i++;
@@ -511,7 +494,7 @@ bool FixedRotationStripPackingTask::separate(std::shared_ptr<EnhancedStripPackin
     return false;
 }
 
-std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::explore(std::shared_ptr<EnhancedStripPackingSolution> &solution, float initialHeight, float minimumHeight, Random& random) {
+std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::explore(std::shared_ptr<EnhancedStripPackingSolution> &solution, float initialHeight, float minimumHeight, const Random& random) {
 
     auto bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone());
     startMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -520,12 +503,12 @@ std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::exp
 
     std::vector<std::shared_ptr<EnhancedStripPackingSolution>> solutionsPool;
 
-    while (elapsedMilliseconds < allowedRunTimeMilliseconds && !stopCalled) {
-        bool separated = separate(solution, 3, 200, currentHeight, random);
+    while (elapsedMilliseconds < options.exploreTimeMillis && !stopCalled) {
+        bool separated = separate(solution, options.exploreMaxSeparationAttempts, options.explorationMaxSeparationIterations, currentHeight, options.exploreTimeMillis, random);
         if (separated) {
             notifyObserversSolution(solution);
             notifyObserversStatus("Achieved height " + std::to_string(currentHeight));
-            std::cout << "Found feasible solution with height " << currentHeight << " (" << solution->isFeasible() << ") after " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - startMilliseconds << "ms" << std::endl;
+            std::cout << "Found feasible solution during exploration with height " << currentHeight << " (" << solution->isFeasible() << ") after " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - startMilliseconds << "ms" << std::endl;
             std::cout << std::endl;
             bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone());
 
@@ -534,14 +517,13 @@ std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::exp
             }
 
             // shrink strip
-            constexpr auto REDUCTION_FACTOR = 0.995f;
-            currentHeight *= REDUCTION_FACTOR;
+            currentHeight *= options.explorationReductionFactor;
             currentHeight = std::max(currentHeight, minimumHeight);
             for (auto itemIndex = 0; itemIndex < solution->getNumberOfItems(); ++itemIndex) {
                 auto& item = solution->getItem(itemIndex);
                 auto transformation = item->getModelTransformation();
                 auto validTranslationRange = getValidTranslationRange(solution, currentHeight, itemIndex);
-                transformation.setPositionZ(glm::clamp(transformation.getPosition().z * REDUCTION_FACTOR, validTranslationRange.getMinimum().z, validTranslationRange.getMaximum().z));
+                transformation.setPositionZ(glm::clamp(transformation.getPosition().z * options.explorationReductionFactor, validTranslationRange.getMinimum().z, validTranslationRange.getMaximum().z));
                 solution->setItemTransformation(itemIndex, transformation);
                 assert(problem->getContainer().containsAABB(solution->getItemAABB(itemIndex))); // Ensure items are not below the ground
             }
@@ -579,9 +561,59 @@ std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::exp
     return bestSolution;
 }
 
+std::shared_ptr<EnhancedStripPackingSolution> FixedRotationStripPackingTask::compress(std::shared_ptr<EnhancedStripPackingSolution> &solution, float initialHeight, float minimumHeight, const Random& random) {
+
+    auto bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone());
+
+    auto bestHeight = bestSolution->computeTotalHeight();
+
+    while (elapsedMilliseconds < options.exploreTimeMillis + options.compressionTimeMillis && !stopCalled) {
+
+        // Fraction of compression time that is already elapsed
+        auto fraction = (elapsedMilliseconds - options.exploreTimeMillis) / static_cast<float>(options.compressionTimeMillis);
+
+        // Linearly interpolate reduction factor from max to min
+        auto reductionFactor = options.compressionReductionFactorMax + fraction * (options.compressionReductionFactorMin - options.compressionReductionFactorMax);
+
+        // shrink strip
+        auto currentHeight = bestHeight * reductionFactor;
+        currentHeight = std::max(currentHeight, minimumHeight);
+        for (auto itemIndex = 0; itemIndex < solution->getNumberOfItems(); ++itemIndex) {
+            auto& item = solution->getItem(itemIndex);
+            auto transformation = item->getModelTransformation();
+            auto validTranslationRange = getValidTranslationRange(solution, currentHeight, itemIndex);
+            transformation.setPositionZ(glm::clamp(transformation.getPosition().z * options.explorationReductionFactor, validTranslationRange.getMinimum().z, validTranslationRange.getMaximum().z));
+            solution->setItemTransformation(itemIndex, transformation);
+            assert(problem->getContainer().containsAABB(solution->getItemAABB(itemIndex))); // Ensure items are not below the ground
+        }
+
+        bool separated = separate(solution, options.compressionMaxSeparationAttempts, options.compressionMaxSeparationIterations, currentHeight, options.exploreTimeMillis + options.compressionTimeMillis, random);
+        if (separated) {
+            notifyObserversSolution(solution);
+            notifyObserversStatus("Achieved height " + std::to_string(currentHeight));
+            std::cout << "Found feasible solution during compression with height " << currentHeight << " (" << solution->isFeasible() << ") after " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - startMilliseconds << "ms" << std::endl;
+            std::cout << std::endl;
+            bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone());
+            bestHeight = currentHeight;
+
+            if (currentHeight == minimumHeight) {
+                return bestSolution; // We achieved the lower bound height (largest item), no need to continue
+            }
+
+        }
+
+        elapsedMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - startMilliseconds;
+    }
+
+    return bestSolution;
+}
+
 void FixedRotationStripPackingTask::run() {
 
+    // Initialise
     this->notifyObserversStatus("Initialising");
+    startMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    Random random(options.seed);
 
     // Create and notify the solution
     notifyObserversStatus("Constructing solution");
@@ -618,7 +650,6 @@ void FixedRotationStripPackingTask::run() {
     auto bestSolution = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(solution->clone());
 
     // Create a random overlapping solution, half the trivial height
-    Random random(seed);
     notifyObserversStatus("Creating random overlapping solution");
     for (int itemIndex = 0; itemIndex < solution->getNumberOfItems(); ++itemIndex) {
         auto& item = solution->getItem(itemIndex);
@@ -631,24 +662,23 @@ void FixedRotationStripPackingTask::run() {
     notifyObserversSolution(solution);
 
     notifyObserversStatus("Starting exploration");
+
     bestSolution = explore(solution, currentHeight, minimumHeight, random);
+
+    notifyObserversStatus("Starting compression");
+
+    bestSolution = compress(bestSolution, bestSolution->computeTotalHeight(), minimumHeight, random);
+
+    notifyObserversStatus("Finished compression");
 
     notifyObserversSolution(bestSolution);
     result = bestSolution;
 
     // Export the best solution
     auto solutionJSON = std::dynamic_pointer_cast<EnhancedStripPackingSolution>(bestSolution)->toJson();
-    std::ofstream jsonOutputFile(SOLUTION_DIR + problem->getName() + "_Fixed_" + std::to_string(seed) + "_" + std::to_string(bestSolution->computeTotalHeight()) + ".json");
+    std::ofstream jsonOutputFile(std::string(SOLUTION_DIR) + "fixed/" + problem->getName() + "_Fixed_" + std::to_string(options.seed) + "_" + std::to_string(bestSolution->computeTotalHeight()) + ".json");
     jsonOutputFile << solutionJSON.dump(4);
     jsonOutputFile.close();
-}
-
-void FixedRotationStripPackingTask::setSeed(int seed) {
-    this->seed = seed;
-}
-
-void FixedRotationStripPackingTask::setAllowedRunTimeMilliseconds(size_t milliseconds) {
-    this->allowedRunTimeMilliseconds = milliseconds;
 }
 
 std::shared_ptr<StripPackingSolution> FixedRotationStripPackingTask::getResult() const {

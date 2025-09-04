@@ -5,8 +5,10 @@
 #ifndef DISCRETEROTATIONSTRIPPACKINGTASK_H
 #define DISCRETEROTATIONSTRIPPACKINGTASK_H
 
-#include <meshcore/tasks/AbstractTask.h>
 #include "EnhancedStripPackingSolution.h"
+#include "SparrowOptions.h"
+
+#include <meshcore/tasks/AbstractTask.h>
 #include <meshcore/utility/Random.h>
 
 class DiscreteRotationStripPackingTask final : public AbstractTask {
@@ -138,11 +140,10 @@ class DiscreteRotationStripPackingTask final : public AbstractTask {
 
     std::map<std::pair<size_t, size_t>, float> init_weights(const EnhancedStripPackingSolution& solution);
 
-private:
-    int seed = 0;
+    SparrowOptions options;
+
     size_t nRotationAngles; // Number of discrete rotation angles around each axis
 
-    size_t allowedRunTimeMilliseconds = 60 * 60 * 1000; // 1 hour
     long long startMilliseconds = 0;
     long long elapsedMilliseconds = 0;
 
@@ -150,17 +151,14 @@ private:
     std::shared_ptr<StripPackingSolution> result;
 
 public:
-    explicit DiscreteRotationStripPackingTask(const std::shared_ptr<StripPackingProblem>& problem, size_t nRotationAngles): problem(problem), nRotationAngles(nRotationAngles) {}
+    explicit DiscreteRotationStripPackingTask(const std::shared_ptr<StripPackingProblem>& problem, size_t nRotationAngles, const SparrowOptions& options = SparrowOptions());
 
-    bool separate(std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t maxAttempts, size_t maxIterationsWithoutImprovement, float currentHeight, Random& random);
+    bool separate(std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t maxAttempts, size_t maxIterationsWithoutImprovement, float currentHeight, long long allowedRunTimeMilliseconds, const Random& random);
 
-    std::shared_ptr<EnhancedStripPackingSolution> explore(std::shared_ptr<EnhancedStripPackingSolution>& solution, float initialHeight, float minimumHeight, const std::vector<Quaternion>& minimumHeightRotations);
+    std::shared_ptr<EnhancedStripPackingSolution> explore(std::shared_ptr<EnhancedStripPackingSolution>& solution, float initialHeight, float minimumHeight, const std::vector<Quaternion>& minimumHeightRotations, const Random& random);
+    std::shared_ptr<EnhancedStripPackingSolution> compress(std::shared_ptr<EnhancedStripPackingSolution>& solution, float initialHeight, float minimumHeight, const std::vector<Quaternion>& minimumHeightRotations, const Random& random);
 
     void run() override;
-
-    void setSeed(int seed);
-
-    void setAllowedRunTimeMilliseconds(size_t milliseconds);
 
     std::shared_ptr<StripPackingSolution> getResult() const;
 };

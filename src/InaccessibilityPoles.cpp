@@ -24,7 +24,6 @@ float computeSignedDistanceToMeshAndPoles(const std::shared_ptr<BoundingVolumeHi
         }
     }
 
-
     auto inside = tree->containsPoint(point);
     if (minimumDistanceRequired > 0 && !inside) {
         return -std::numeric_limits<float>::infinity();
