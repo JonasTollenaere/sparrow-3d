@@ -82,6 +82,8 @@ class DiscreteRotationStripPackingTask final : public AbstractTask {
      */
     float evaluate_item_sample(const std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t itemIndex, const std::map<std::pair<size_t, size_t>, float> & collisionWeights);
 
+    float evaluate_item_sample_threshold(const std::shared_ptr<EnhancedStripPackingSolution>& solution, size_t itemIndex, const std::map<std::pair<size_t, size_t>, float> & collisionWeights, float threshold);
+
     /**
      *
      * @param random

@@ -44,6 +44,9 @@ void run(RenderWidget* renderWidget) {
     instances.emplace_back(STOYAN_2005_EXAMPLE_2, 16,4);
     instances.emplace_back(STOYAN_2005_EXAMPLE_3, 24.91,4);
 
+    instances.emplace_back(LAMAS_FERNANDEZ_2022_ENGINE, 0.0f, 4);
+    instances.emplace_back(LAMAS_FERNANDEZ_2022_CHESS, 0.0f, 4);
+
     for (const auto& [instance, bestReportedHeight, nRotationAngles] : instances) {
         for (int seed = 0; seed < 15; ++seed) {
             renderWidget->clear();

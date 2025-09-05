@@ -122,8 +122,7 @@ std::vector<bool> FixedRotationStripPackingTask::getCollidingItems(
     return collidingItems;
 }
 
-float FixedRotationStripPackingTask::evaluate_item_sample(const std::shared_ptr<EnhancedStripPackingSolution> &solution,
-    size_t itemIndex, const std::map<std::pair<size_t, size_t>, float> &collisionWeights) {
+float FixedRotationStripPackingTask::evaluate_item_sample(const std::shared_ptr<EnhancedStripPackingSolution> &solution, size_t itemIndex, const std::map<std::pair<size_t, size_t>, float> &collisionWeights) {
 
     auto result = 0.0f;
 
@@ -139,6 +138,26 @@ float FixedRotationStripPackingTask::evaluate_item_sample(const std::shared_ptr<
         }
     }
     return result;
+}
+
+float FixedRotationStripPackingTask::evaluate_item_sample_threshold(const std::shared_ptr<EnhancedStripPackingSolution> &solution, size_t itemIndex, const std::map<std::pair<size_t, size_t>, float> &collisionWeights, float threshold) {
+
+    auto evaluation = 0.0f;
+
+    for (size_t otherItemIndex=0; otherItemIndex<solution->getNumberOfItems(); ++otherItemIndex) {
+
+        if (otherItemIndex == itemIndex) continue; // Self collision should not be considered
+
+        if (collide(solution, itemIndex, otherItemIndex)) {
+            assert(collisionWeights.find({std::min(itemIndex, otherItemIndex),
+                std::max(itemIndex, otherItemIndex)}) != collisionWeights.end());
+            auto collisionWeight = collisionWeights.find({std::min(itemIndex, otherItemIndex), std::max(itemIndex, otherItemIndex)})->second;
+            evaluation += quantify_collision(solution, itemIndex, otherItemIndex) * collisionWeight;
+
+            if (evaluation>=threshold) return std::numeric_limits<float>::max(); // Early exit when we exceed the threshold
+        }
+    }
+    return evaluation;
 }
 
 glm::vec3 FixedRotationStripPackingTask::sample_position(const AABB &range, const Random &random) {
@@ -173,7 +192,9 @@ void FixedRotationStripPackingTask::search_position(std::shared_ptr<EnhancedStri
         solution->setItemTransformation(itemIndex, newTransformation);
 
         // Evaluate the placement quality
-        sampledPositions[evaluate_item_sample(solution, itemIndex, collisionWeights)] = samplePosition;
+        auto thirdBestEvaluation = sampledPositions.size() >= 3 ? std::next(sampledPositions.begin(), 2)->first : std::numeric_limits<float>::max();
+        auto evaluation = evaluate_item_sample_threshold(solution, itemIndex, collisionWeights, thirdBestEvaluation); // Early exit when we exceed the best found so far
+        sampledPositions[evaluation] = {samplePosition};
     }
 
     // Samples in neighborhood of item's current position
@@ -195,7 +216,9 @@ void FixedRotationStripPackingTask::search_position(std::shared_ptr<EnhancedStri
         solution->setItemTransformation(itemIndex, newTransformation);
 
         // Evaluate the placement quality
-        sampledPositions[evaluate_item_sample(solution, itemIndex, collisionWeights)] = newPosition;
+        auto thirdBestEvaluation = sampledPositions.size() >= 3 ? std::next(sampledPositions.begin(), 2)->first : std::numeric_limits<float>::max();
+        auto evaluation = evaluate_item_sample_threshold(solution, itemIndex, collisionWeights, thirdBestEvaluation); // Early exit when we exceed the best found so far
+        sampledPositions[evaluation] = {newPosition};
     }
 
     // Refine best positions
@@ -228,7 +251,7 @@ void FixedRotationStripPackingTask::search_position(std::shared_ptr<EnhancedStri
                 Transformation newTransformation = item->getModelTransformation();
                 newTransformation.setPosition(newPosition);
                 solution->setItemTransformation(itemIndex, newTransformation);
-                auto newEvaluation = evaluate_item_sample(solution, itemIndex, collisionWeights);
+                auto newEvaluation = evaluate_item_sample_threshold(solution, itemIndex, collisionWeights,currentEvaluation);
                 if (newEvaluation < currentEvaluation) {
                     currentPosition = newPosition;
                     currentEvaluation = newEvaluation;
