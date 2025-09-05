@@ -162,6 +162,28 @@ float DiscreteRotationStripPackingTask::evaluate_item_sample(
     return result;
 }
 
+float DiscreteRotationStripPackingTask::evaluate_item_sample_threshold(
+    const std::shared_ptr<EnhancedStripPackingSolution> &solution, size_t itemIndex,
+    const std::map<std::pair<size_t, size_t>, float> &collisionWeights, float threshold) {
+
+    auto evaluation = 0.0f;
+
+    for (size_t otherItemIndex=0; otherItemIndex<solution->getNumberOfItems(); ++otherItemIndex) {
+
+        if (otherItemIndex == itemIndex) continue; // Self collision should not be considered
+
+        if (collide(solution, itemIndex, otherItemIndex)) {
+            assert(collisionWeights.find({std::min(itemIndex, otherItemIndex),
+                std::max(itemIndex, otherItemIndex)}) != collisionWeights.end());
+            auto collisionWeight = collisionWeights.find({std::min(itemIndex, otherItemIndex), std::max(itemIndex, otherItemIndex)})->second;
+            evaluation += quantify_collision(solution, itemIndex, otherItemIndex) * collisionWeight;
+
+            if (evaluation>=threshold) return std::numeric_limits<float>::max(); // Early exit when we exceed the threshold
+        }
+    }
+    return evaluation;
+}
+
 float DiscreteRotationStripPackingTask::sample_angle(const Random &random, size_t steps) {
     size_t step = random.nextUnsignedInteger(0, steps - 1);
     float angle = 2.0f * glm::pi<float>() * static_cast<float>(step) / static_cast<float>(steps);
@@ -223,7 +245,9 @@ void DiscreteRotationStripPackingTask::search_position(std::shared_ptr<EnhancedS
         assert(is_contained(solution, itemIndex));
 
         // Evaluate the placement quality
-        sampledPlacements[evaluate_item_sample(solution, itemIndex, collisionWeights)] = {sampledRotation, sampledPosition};
+        auto thirdBestEvaluation = sampledPlacements.size() >= 3 ? std::next(sampledPlacements.begin(), 2)->first : std::numeric_limits<float>::max();
+        auto evaluation = evaluate_item_sample_threshold(solution, itemIndex, collisionWeights, thirdBestEvaluation); // Early exit when we exceed the best found so far
+        sampledPlacements[evaluation] = {sampledRotation, sampledPosition};
     }
 
     // Rotated samples near the initial position
@@ -268,7 +292,9 @@ void DiscreteRotationStripPackingTask::search_position(std::shared_ptr<EnhancedS
         assert(is_contained(solution, itemIndex));
 
         // Evaluate the placement quality
-        sampledPlacements[evaluate_item_sample(solution, itemIndex, collisionWeights)] = {sampledRotation, newPosition};
+        auto thirdBestEvaluation = sampledPlacements.size() >= 3 ? std::next(sampledPlacements.begin(), 2)->first : std::numeric_limits<float>::max();
+        auto evaluation = evaluate_item_sample_threshold(solution, itemIndex, collisionWeights, thirdBestEvaluation); // Early exit when we exceed the best found so far
+        sampledPlacements[evaluation] = {sampledRotation, newPosition};
     }
 
     // Restore the original rotation
@@ -302,7 +328,9 @@ void DiscreteRotationStripPackingTask::search_position(std::shared_ptr<EnhancedS
             assert(is_contained(solution, itemIndex));
 
             // Evaluate the placement quality
-            sampledPlacements[evaluate_item_sample(solution, itemIndex, collisionWeights)] = {initialRotation, newPosition};
+            auto thirdBestEvaluation = sampledPlacements.size() >= 3 ? std::next(sampledPlacements.begin(), 2)->first : std::numeric_limits<float>::max();
+            auto evaluation = evaluate_item_sample_threshold(solution, itemIndex, collisionWeights, thirdBestEvaluation); // Early exit when we exceed the best found so far
+            sampledPlacements[evaluation] = {initialRotation, newPosition};
         }
     }
 
@@ -353,7 +381,7 @@ void DiscreteRotationStripPackingTask::search_position(std::shared_ptr<EnhancedS
                 newTransformation.setPosition(newPosition);
                 solution->setItemTransformation(itemIndex, newTransformation);
 
-                auto newEvaluation = evaluate_item_sample(solution, itemIndex, collisionWeights);
+                auto newEvaluation = evaluate_item_sample_threshold(solution, itemIndex, collisionWeights, bestNeighborEvaluation);
                 if (newEvaluation < bestNeighborEvaluation) {
 
                     bestNeighborPosition = newPosition;
