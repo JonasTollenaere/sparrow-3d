@@ -46,5 +46,8 @@ target_link_libraries(Benchmark_Fixed_Rotation PUBLIC MeshCore)
 add_executable(Benchmark_Discrete_Rotation Benchmark_Discrete_Rotation.cpp ${SOURCES})
 target_link_libraries(Benchmark_Discrete_Rotation PUBLIC MeshCore)
 
-add_executable(RenderPolesOfInaccessibility RenderPolesOfInaccessibility.cpp ${SOURCES})
-target_link_libraries(RenderPolesOfInaccessibility PUBLIC MeshCore)
+add_executable(Render_Solution_Poles Render_Solution_Poles.cpp ${SOURCES})
+target_link_libraries(Render_Solution_Poles PUBLIC MeshCore)
+
+add_executable(Render_Item_Poles Render_Item_Poles.cpp ${SOURCES})
+target_link_libraries(Render_Item_Poles PUBLIC MeshCore)
