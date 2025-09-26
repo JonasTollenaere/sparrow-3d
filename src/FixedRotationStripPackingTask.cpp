@@ -172,14 +172,19 @@ void FixedRotationStripPackingTask::search_position(std::shared_ptr<EnhancedStri
     float containerHeight, size_t itemIndex, const Random &random,
     const std::map<std::pair<size_t, size_t>, float> &collisionWeights) {
 
+    auto originalEvaluation = evaluate_item_sample(solution, itemIndex, collisionWeights);
+
+    // Because the other items in a collision could have been moved already,
+    // the original evaluation might already be 0. We can therefore skip some work.
+    if (originalEvaluation <= 0.0f) {
+        return;
+    }
+
+    // Store sampled evaluations, sorted by placement quality
     auto& item = solution->getItem(itemIndex);
     const auto initialPosition = item->getModelTransformation().getPosition();
     const auto validTranslationRange = getValidTranslationRange(solution, containerHeight, itemIndex);
-
-    // Store sampled evaluations, sorted by placement quality
     std::map<float, glm::vec3> sampledPositions;
-
-    auto originalEvaluation = evaluate_item_sample(solution, itemIndex, collisionWeights);
     sampledPositions[originalEvaluation] = initialPosition;
 
     // Uniform samples in container
