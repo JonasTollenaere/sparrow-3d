@@ -41,5 +41,8 @@
   }, {
     "name" : "fmt",
     "version>=" : "11.0.2#1"
+  }, {
+    "name" : "earcut-hpp",
+    "version>=" : "2.2.4"
   } ]
 }
