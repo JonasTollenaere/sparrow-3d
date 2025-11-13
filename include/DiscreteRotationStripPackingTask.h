@@ -9,7 +9,7 @@
 #include "SparrowOptions.h"
 
 #include <meshcore/tasks/AbstractTask.h>
-#include <meshcore/utility/Random.h>
+#include <meshcore/utility/random.h>
 
 class DiscreteRotationStripPackingTask final : public AbstractTask {
 

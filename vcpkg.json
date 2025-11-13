@@ -1,7 +1,7 @@
 {
   "name" : "packer",
   "version-string" : "1.0.0",
-  "builtin-baseline" : "23b33f5a010e3d67132fa3c34ab6cd0009bb9296",
+  "builtin-baseline" : "dd3097e305afa53f7b4312371f62058d2e665320",
   "dependencies" : [ {
     "name" : "glm",
     "version>=" : "1.0.1#1"
@@ -41,5 +41,8 @@
   }, {
     "name" : "fmt",
     "version>=" : "11.0.2#1"
+  }, {
+    "name" : "earcut-hpp",
+    "version>=" : "2.2.4"
   } ]
 }

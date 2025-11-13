@@ -50,13 +50,13 @@ void run(RenderWidget* renderWidget){
                     renderWidget->renderWorldSpaceMesh("Items", item, StripPackingProblem::getItemColor(itemName));
                     renderWidget->renderWorldSpaceMesh("Ghosts", item, Color(0.9,0.9,0.9,0.3));
 
-                    auto convexHull = std::make_shared<WorldSpaceMesh>(item->getModelSpaceMesh()->getConvexHull());
-                    convexHull->setModelTransformation(item->getModelTransformation());
+                    auto convexHull = std::make_shared<WorldSpaceMesh>(item.getModelSpaceMesh()->getConvexHull());
+                    convexHull->setModelTransformation(item.getModelTransformation());
                     renderWidget->renderWorldSpaceMesh("ConvexHulls", convexHull, Color(0.5, 0.5, 0.5, 0.5));
 
                     // Render the poles of inaccessibility for this item
                     for (size_t poleIndex = 0; poleIndex < sol->getPolesOfInaccessibility(itemIndex).size(); ++poleIndex) {
-                        Sphere transformedSphere = sol->getPolesOfInaccessibility(itemIndex)[poleIndex].getTransformed(item->getModelTransformation());
+                        Sphere transformedSphere = sol->getPolesOfInaccessibility(itemIndex)[poleIndex].getTransformed(item.getModelTransformation());
                         renderWidget->renderSphere("Item"+std::to_string(itemIndex), "Pole"+std::to_string(poleIndex), transformedSphere,StripPackingProblem::getItemColor(itemName));
                     }
                 }
