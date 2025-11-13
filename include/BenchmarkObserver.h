@@ -26,7 +26,7 @@ public:
 
     virtual ~StripPackingBenchmarkObserver() = default;
 
-    void notifyStarted() override {
+    void notifyStarted(const std::string& taskName) override {
         startTime = std::chrono::high_resolution_clock::now();
 
         // Reset the best solutions in case the task was started multiple times

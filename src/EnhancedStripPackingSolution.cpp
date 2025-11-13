@@ -3,6 +3,9 @@
 //
 
 #include "EnhancedStripPackingSolution.h"
+
+#include <iostream>
+
 #include "InaccessibilityPoles.h"
 #include "AlphaWrapper.h"
 
@@ -11,7 +14,7 @@ EnhancedStripPackingSolution::EnhancedStripPackingSolution(StripPackingSolution 
     itemPolesOfInaccessibility.reserve(solution.getItems().size());
     for (const auto & item : solution.getItems()) {
 
-        auto modelSpaceMesh = item->getModelSpaceMesh();
+        auto modelSpaceMesh = item.getModelSpaceMesh();
         auto simplifiedMesh = modelSpaceMesh;
         if(modelSpaceMesh->getTriangles().size() > 1000){
             auto start = std::chrono::high_resolution_clock::now();
@@ -28,7 +31,7 @@ EnhancedStripPackingSolution::EnhancedStripPackingSolution(StripPackingSolution 
         }
 
         auto worldSpaceMesh = std::make_shared<WorldSpaceMesh>(simplifiedMesh);
-        worldSpaceMesh->setModelTransformation(item->getModelTransformation());
+        worldSpaceMesh->setModelTransformation(item.getModelTransformation());
         simplifiedItems.push_back(worldSpaceMesh);
 
         itemPolesOfInaccessibility.push_back(InaccessibilityPoles::computePolesOfInaccessibility(simplifiedMesh, 32));
